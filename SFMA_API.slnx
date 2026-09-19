@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="SFMA_API.Api/SFMA_API.Api.csproj" />
+  <Project Path="SFMA_API.Data/SFMA_API.Data.csproj" />
+  <Project Path="SFMA_API.Logger/SFMA_API.Logger.csproj" />
+  <Project Path="SFMA_API.Models/SFMA_API.Models.csproj" />
+  <Project Path="SFMA_API.Services/SFMA_API.Services.csproj" />
+</Solution>
