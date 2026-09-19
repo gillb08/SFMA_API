@@ -1,6 +1,8 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using SFMA_API.Data.Interfaces;
+using SFMA_API.Models.Configuration;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
@@ -20,13 +22,20 @@ namespace SFMA_API.Services.Implementation
         private readonly IJWTAuthenticator _jwtAuthenticator;
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly SchoolSettings _schoolSettings;
 
-        public AuthenticationService(UserManager<ApplicationUser> userManager, IJWTAuthenticator jwtAuthenticator, IMapper mapper, IUnitOfWork unitOfWork)
+        public AuthenticationService(
+            UserManager<ApplicationUser> userManager,
+            IJWTAuthenticator jwtAuthenticator,
+            IMapper mapper,
+            IUnitOfWork unitOfWork,
+            IOptions<SchoolSettings> schoolSettings)
         {
             _userManager = userManager;
             _jwtAuthenticator = jwtAuthenticator;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _schoolSettings = schoolSettings.Value;
         }
 
         public async Task<LoggedInUserResponse> Login(LoginRequest request)
@@ -59,23 +68,14 @@ namespace SFMA_API.Services.Implementation
             await _userManager.UpdateAsync(user);
 
             var roles = await _userManager.GetRolesAsync(user);
-            string primaryRole = roles.FirstOrDefault() ?? "student";
+            string primaryRole = roles.FirstOrDefault()
+                ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
             var token = await _jwtAuthenticator.GenerateJwtToken(user);
             var refreshToken = await _jwtAuthenticator.GenerateRefreshToken(user);
 
-            string portalRedirect = primaryRole switch
-            {
-                "super_admin" => "/portal/admin",
-                "academic_admin" => "/portal/academic-admin",
-                "financial_admin" => "/portal/bursary",
-                "academic_head" => "/portal/academic-head",
-                "financial_head" => "/portal/financial-head",
-                "teacher" => "/portal/teacher",
-                "parent" => "/portal/parent",
-                "student" => "/portal/student",
-                _ => "/portal"
-            };
+            // Portal route resolved from configuration — no hardcoded paths in code
+            string portalRedirect = _schoolSettings.GetPortalRoute(primaryRole);
 
             var userProfile = new UserProfileResponse
             {
@@ -100,7 +100,8 @@ namespace SFMA_API.Services.Implementation
             var user = await _userManager.FindByIdAsync(userId);
             if (user != null)
             {
-                await _userManager.RemoveAuthenticationTokenAsync(user, "SFMA", "RefreshToken");
+                // Token provider name read from configuration, not hardcoded
+                await _userManager.RemoveAuthenticationTokenAsync(user, _schoolSettings.TokenProviderName, "RefreshToken");
             }
             return true;
         }
@@ -114,7 +115,8 @@ namespace SFMA_API.Services.Implementation
             }
 
             var roles = await _userManager.GetRolesAsync(user);
-            string primaryRole = roles.FirstOrDefault() ?? "student";
+            string primaryRole = roles.FirstOrDefault()
+                ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
             return new UserProfileResponse
             {
@@ -123,7 +125,7 @@ namespace SFMA_API.Services.Implementation
                 DisplayName = user.DisplayName,
                 Role = primaryRole,
                 AvatarUrl = user.AvatarUrl,
-                PortalRedirect = $"/portal/{primaryRole.Replace("_", "-")}"
+                PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole)
             };
         }
 
@@ -184,7 +186,8 @@ namespace SFMA_API.Services.Implementation
             var newRefreshToken = await _jwtAuthenticator.GenerateRefreshToken(user);
 
             var roles = await _userManager.GetRolesAsync(user);
-            string primaryRole = roles.FirstOrDefault() ?? "student";
+            string primaryRole = roles.FirstOrDefault()
+                ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
             return new LoggedInUserResponse
             {
@@ -197,7 +200,7 @@ namespace SFMA_API.Services.Implementation
                     DisplayName = user.DisplayName,
                     Role = primaryRole,
                     AvatarUrl = user.AvatarUrl,
-                    PortalRedirect = $"/portal/{primaryRole.Replace("_", "-")}"
+                    PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole)
                 }
             };
         }
@@ -289,3 +292,4 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
+

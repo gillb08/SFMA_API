@@ -1,7 +1,9 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SFMA_API.Data.Interfaces;
+using SFMA_API.Models.Configuration;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
@@ -22,12 +24,18 @@ namespace SFMA_API.Services.Implementation
         private readonly IUnitOfWork _unitOfWork;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IMapper _mapper;
+        private readonly SchoolSettings _schoolSettings;
 
-        public StudentService(IUnitOfWork unitOfWork, UserManager<ApplicationUser> userManager, IMapper mapper)
+        public StudentService(
+            IUnitOfWork unitOfWork,
+            UserManager<ApplicationUser> userManager,
+            IMapper mapper,
+            IOptions<SchoolSettings> schoolSettings)
         {
             _unitOfWork = unitOfWork;
             _userManager = userManager;
             _mapper = mapper;
+            _schoolSettings = schoolSettings.Value;
         }
 
         public async Task<PagedResponse<StudentResponse>> GetAllStudents(Guid? classId, StudentStatus? status, RequestParameters parameters, ClaimsPrincipal currentUser)
@@ -149,10 +157,15 @@ namespace SFMA_API.Services.Implementation
                 }
             }
 
-            // Generate Student Code
+            // Generate Student Code — year is dynamic, prefix comes from config
             var totalStudents = await studentRepo.CountAsync();
-            string studentCode = $"SF-2026-{(totalStudents + 1):D4}";
-            string studentEmail = $"{studentCode.ToLower()}@stfaithacademy.edu.ng";
+            int currentYear = DateTime.UtcNow.Year;
+            string prefix = _schoolSettings.StudentCodePrefix;
+            string studentCode = $"{prefix}-{currentYear}-{(totalStudents + 1):D4}";
+
+            // Email domain comes from configuration — not hardcoded
+            string emailDomain = _schoolSettings.EmailDomain;
+            string studentEmail = $"{studentCode.ToLower()}@{emailDomain}";
 
             // Create Student User
             var studentUser = new ApplicationUser
@@ -170,7 +183,7 @@ namespace SFMA_API.Services.Implementation
             // Create Parent User & Record
             string parentEmail = !string.IsNullOrWhiteSpace(request.GuardianEmail)
                 ? request.GuardianEmail.Trim().ToLower()
-                : $"parent.{studentCode.ToLower()}@stfaithacademy.edu.ng";
+                : $"parent.{studentCode.ToLower()}@{emailDomain}";
 
             var parentUser = new ApplicationUser
             {
@@ -214,18 +227,18 @@ namespace SFMA_API.Services.Implementation
             };
             await studentRepo.AddAsync(student);
 
-            // Link Student-Parent
+            // Link Student-Parent — relationship comes from request, not hardcoded
             var studentParent = new StudentParent
             {
                 StudentId = student.Id,
                 ParentId = parent.Id,
-                Relationship = "Guardian",
+                Relationship = request.GuardianRelationship,
                 IsPrimary = true
             };
             await _unitOfWork.GetRepository<StudentParent>().AddAsync(studentParent);
 
-            // Create ID Card
-            string cardSerial = $"SF-NFC-{(new Random().Next(10000, 99999))}-2026";
+            // Create ID Card — year is dynamic; use Random.Shared to avoid collision risk
+            string cardSerial = $"{prefix}-NFC-{Random.Shared.Next(10000, 99999)}-{currentYear}";
             var idCard = new IdCard
             {
                 Id = Guid.NewGuid(),
@@ -322,3 +335,4 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
+

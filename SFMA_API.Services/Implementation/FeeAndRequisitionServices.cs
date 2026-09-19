@@ -1,6 +1,8 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SFMA_API.Data.Interfaces;
+using SFMA_API.Models.Configuration;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
@@ -79,7 +81,16 @@ namespace SFMA_API.Services.Implementation
             var feeSchedule = await _unitOfWork.GetRepository<FeeSchedule>().GetSingleByAsync(
                 f => f.AcademicTermId == activeTerm!.Id && (f.ClassSectionId == student.ClassSectionId || f.ClassSectionId == null));
 
-            decimal totalBilled = feeSchedule?.TotalAmount ?? 150000m;
+            // No silent fallback — if there is no fee schedule the data would be wrong.
+            // Administrators must configure a fee schedule for the active term before summaries can be served.
+            if (feeSchedule == null)
+            {
+                throw new KeyNotFoundException(
+                    "No fee schedule has been configured for this student's class and the current active term. " +
+                    "Please set up a fee schedule before viewing student fee summaries.");
+            }
+
+            decimal totalBilled = feeSchedule.TotalAmount;
 
             var transactions = await _unitOfWork.GetRepository<FeeTransaction>().GetByAsync(
                 f => f.StudentId == studentId,
@@ -121,7 +132,8 @@ namespace SFMA_API.Services.Implementation
                 AcademicTermId = request.AcademicTermId ?? activeTerm?.Id ?? Guid.Empty,
                 AmountPaid = request.Amount,
                 PaymentDate = request.PaymentDate,
-                PaymentMethod = "Bank Transfer",
+                // PaymentMethod is now supplied by the caller — no longer hardcoded to "Bank Transfer"
+                PaymentMethod = request.PaymentMethod,
                 BankTellerRef = request.BankTellerRef,
                 Status = FeeTransactionStatus.PendingReview,
                 Notes = request.Notes,
@@ -171,7 +183,8 @@ namespace SFMA_API.Services.Implementation
                 if (existingReceipt == null)
                 {
                     var totalReceipts = await _unitOfWork.GetRepository<Receipt>().CountAsync();
-                    string receiptCode = $"REC-2026-{(totalReceipts + 1):D4}";
+                    // Year is dynamic — not hardcoded to 2026
+                    string receiptCode = $"REC-{DateTime.UtcNow.Year}-{(totalReceipts + 1):D4}";
 
                     var receipt = new Receipt
                     {
@@ -189,7 +202,8 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.SaveChangesAsync();
 
             var response = _mapper.Map<FeeTransactionResponse>(transaction);
-            response.VerifiedByName = staff?.User?.DisplayName ?? "Bursar";
+            // Use actual verifier name; fall back to "Unknown" rather than a misleading role name
+            response.VerifiedByName = staff?.User?.DisplayName ?? "Unknown";
             return response;
         }
 
@@ -292,7 +306,8 @@ namespace SFMA_API.Services.Implementation
                 ?? await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => true);
 
             var totalReqs = await _unitOfWork.GetRepository<Requisition>().CountAsync();
-            string reqCode = $"REQ-2026-{(totalReqs + 1):D4}";
+            // Year is dynamic — not hardcoded to 2026
+            string reqCode = $"REQ-{DateTime.UtcNow.Year}-{(totalReqs + 1):D4}";
 
             var requisition = new Requisition
             {
@@ -325,7 +340,8 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.SaveChangesAsync();
 
             var res = _mapper.Map<RequisitionResponse>(requisition);
-            res.RequestedByName = staff?.User?.DisplayName ?? "Staff";
+            // Use actual name; fall back to "Unknown" rather than a misleading role name
+            res.RequestedByName = staff?.User?.DisplayName ?? "Unknown";
             return res;
         }
 
@@ -445,3 +461,4 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
+

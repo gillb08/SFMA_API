@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Dtos.Request;
+using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Enums;
 using System;
@@ -80,8 +80,8 @@ namespace SFMA_API.Models.Dtos.Request
         public string GuardianPhone { get; set; } = string.Empty;
         public string GuardianEmail { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
-        public string? BloodGroup { get; set; }
-        public string? Genotype { get; set; }
+        /// <summary>Relationship of the guardian to the student e.g. Father, Mother, Guardian, Uncle</summary>
+        public string GuardianRelationship { get; set; } = "Guardian";
     }
 
     public class UpdateStudentBioDataRequest
@@ -166,6 +166,8 @@ namespace SFMA_API.Models.Dtos.Request
         public DateTime PaymentDate { get; set; }
         public string BankTellerRef { get; set; } = string.Empty;
         public string BankName { get; set; } = string.Empty;
+        /// <summary>Payment method e.g. Bank Transfer, Mobile Transfer, POS, Cash</summary>
+        public string PaymentMethod { get; set; } = "Bank Transfer";
         public string? Notes { get; set; }
         public string? AttachmentFile { get; set; }
     }

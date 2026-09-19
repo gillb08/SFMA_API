@@ -42,9 +42,44 @@ builder.Host.UseSerilog((ctx, lc) => lc
 
 // Add services
 builder.Services.Configure<JWTConfiguration>(builder.Configuration.GetSection("JwtConfig"));
+builder.Services.Configure<SFMA_API.Models.Configuration.SchoolSettings>(builder.Configuration.GetSection("SchoolSettings"));
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Host=localhost;Port=5432;Database=SFMA_DB;Username=postgres;Password=postgres;SSL Mode=Prefer;";
+static string ResolveConnectionString(IConfiguration config)
+{
+    var raw = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+        ?? Environment.GetEnvironmentVariable("DATABASE_URL")
+        ?? Environment.GetEnvironmentVariable("DefaultConnection")
+        ?? config.GetConnectionString("DefaultConnection");
+
+    if (string.IsNullOrWhiteSpace(raw) || raw.Contains("<NEON_HOST>"))
+    {
+        var fallback = Environment.GetEnvironmentVariable("DATABASE_URL")
+            ?? Environment.GetEnvironmentVariable("DefaultConnection");
+        if (!string.IsNullOrWhiteSpace(fallback))
+            raw = fallback;
+    }
+
+    if (!string.IsNullOrWhiteSpace(raw))
+    {
+        if (raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        {
+            var uri = new Uri(raw);
+            var userInfo = uri.UserInfo.Split(':');
+            var user = userInfo[0];
+            var pass = userInfo.Length > 1 ? userInfo[1] : "";
+            var host = uri.Host;
+            var port = uri.Port > 0 ? uri.Port : 5432;
+            var db = uri.AbsolutePath.TrimStart('/');
+            return $"Host={host};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+        }
+        return raw;
+    }
+
+    return "Host=localhost;Port=5432;Database=SFMA_DB;Username=postgres;Password=postgres;SSL Mode=Prefer;";
+}
+
+var connectionString = ResolveConnectionString(builder.Configuration);
 
 builder.Services.AddDbContext<SFMA_APIDbContext>(options =>
 {
@@ -130,9 +165,12 @@ builder.Services.AddControllers(setupAction =>
 
 builder.Services.AddEndpointsApiExplorer();
 
-builder.Services.AddCors(o => o.AddPolicy("AllowAll", b =>
+builder.Services.AddCors(o => o.AddPolicy("AllowConfiguredOrigins", b =>
 {
-    b.AllowAnyOrigin()
+    b.WithOrigins(
+        "https://www.stfaithmodelacademy.com",
+        "http://localhost:3000"
+    )
      .AllowAnyMethod()
      .AllowAnyHeader();
 }));
@@ -182,7 +220,7 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "St. Faith Model Academy API v1");
 });
 
-app.UseCors("AllowAll");
+app.UseCors("AllowConfiguredOrigins");
 
 if (app.Environment.IsDevelopment())
 {

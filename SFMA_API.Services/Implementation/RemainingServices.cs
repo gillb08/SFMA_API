@@ -1,7 +1,9 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SFMA_API.Data.Interfaces;
+using SFMA_API.Models.Configuration;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
@@ -12,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace SFMA_API.Services.Implementation
@@ -136,11 +139,13 @@ namespace SFMA_API.Services.Implementation
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly SchoolSettings _schoolSettings;
 
-        public LessonNoteAndAssignmentService(IUnitOfWork unitOfWork, IMapper mapper)
+        public LessonNoteAndAssignmentService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<SchoolSettings> schoolSettings)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _schoolSettings = schoolSettings.Value;
         }
 
         public async Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(LessonNoteStatus? status, ClaimsPrincipal currentUser)
@@ -156,7 +161,9 @@ namespace SFMA_API.Services.Implementation
             }
 
             var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
-            var isSupervisor = roles.Any(r => r == "super_admin" || r == "principal" || r == "vice_principal_acad");
+
+            // Supervisor role list comes from configuration — not hardcoded in logic
+            var isSupervisor = roles.Any(r => _schoolSettings.SupervisorRoles.Contains(r));
 
             if (!isSupervisor && roles.Contains("teacher"))
             {
@@ -290,14 +297,22 @@ namespace SFMA_API.Services.Implementation
 
             var studentId = student?.Id ?? Guid.Empty;
 
+            // FileName and FileType must be supplied by the caller.
+            // No silent defaults — a missing or mismatched type would corrupt submission metadata.
+            if (string.IsNullOrWhiteSpace(request.FileName))
+                throw new ArgumentException("FileName is required when submitting an assignment.");
+
+            if (string.IsNullOrWhiteSpace(request.FileType))
+                throw new ArgumentException("FileType is required when submitting an assignment.");
+
             var submission = new AssignmentSubmission
             {
                 Id = Guid.NewGuid(),
                 AssignmentId = assignmentId,
                 StudentId = studentId,
                 FileUrl = request.FileUrl,
-                FileName = request.FileName ?? "submission.pdf",
-                FileType = request.FileType ?? "application/pdf",
+                FileName = request.FileName,
+                FileType = request.FileType,
                 FileSizeBytes = request.FileSizeBytes,
                 SubmittedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
@@ -523,19 +538,37 @@ namespace SFMA_API.Services.Implementation
             return true;
         }
 
-        public Task<string> ExportRequirementsPdf(Guid classSectionId)
+        public async Task<string> ExportRequirementsPdf(Guid classSectionId)
         {
-            return Task.FromResult("JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iago=");
+            // Previously this returned a hardcoded fake Base64 blob regardless of the class.
+            // Now it queries real requirements and returns a structured CSV payload.
+            // Full PDF generation (via a library such as QuestPDF or iText) should be
+            // implemented here when a PDF library is added to the project.
+            var requirements = await _unitOfWork.GetRepository<SchoolRequirement>()
+                .GetQueryable(r => r.ClassSectionId == classSectionId)
+                .ToListAsync();
+
+            var sb = new StringBuilder();
+            sb.AppendLine("ItemCode,Title,Category,Author,Publisher,IsRequired");
+            foreach (var req in requirements)
+            {
+                sb.AppendLine($"{req.ItemCode},{req.Title},{req.Category},{req.Author},{req.Publisher},{req.IsRequired}");
+            }
+
+            // Return as Base64-encoded CSV until a proper PDF library is integrated
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()));
         }
     }
 
     public class DashboardService : IDashboardService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly SchoolSettings _schoolSettings;
 
-        public DashboardService(IUnitOfWork unitOfWork)
+        public DashboardService(IUnitOfWork unitOfWork, IOptions<SchoolSettings> schoolSettings)
         {
             _unitOfWork = unitOfWork;
+            _schoolSettings = schoolSettings.Value;
         }
 
         public async Task<ExecutiveDashboardResponse> GetExecutiveDashboard()
@@ -554,42 +587,105 @@ namespace SFMA_API.Services.Implementation
             };
         }
 
-        public Task<AcademicSnapshotResponse> GetAcademicSnapshot()
+        public async Task<AcademicSnapshotResponse> GetAcademicSnapshot()
         {
-            return Task.FromResult(new AcademicSnapshotResponse
+            var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>()
+                .GetQueryable(t => t.IsActive)
+                .FirstOrDefaultAsync();
+
+            // No hardcoded fallback term name — return null/empty if no active term is configured
+            if (activeTerm == null)
             {
-                Term = "Term 2 2025/2026",
+                throw new KeyNotFoundException(
+                    "No active academic term is configured. " +
+                    "Please set an active term before viewing the academic snapshot.");
+            }
+
+            var termName = $"Term {activeTerm.TermNumber} {activeTerm.SessionName}";
+            var totalStudents = (int)await _unitOfWork.GetRepository<Student>().CountAsync();
+
+            // Assessment metrics from real database data
+            var scores = await _unitOfWork.GetRepository<AssessmentScore>().GetQueryable().ToListAsync();
+
+            // Pass-mark threshold from configuration — not hardcoded as 50
+            decimal passThreshold = _schoolSettings.PassMarkThreshold;
+            decimal averageScore = scores.Any() ? Math.Round(scores.Average(s => s.TotalScore), 1) : 0m;
+            decimal passRate = scores.Any()
+                ? Math.Round((decimal)scores.Count(s => s.TotalScore >= passThreshold) / scores.Count * 100m, 1)
+                : 0m;
+            var distinctEvaluated = scores.Select(s => s.StudentId).Distinct().Count();
+
+            // Scheme vetting metrics from real database data
+            var schemes = await _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetQueryable().ToListAsync();
+            decimal vettedRate = schemes.Any()
+                ? Math.Round((decimal)schemes.Count(s => s.VettedByHos) / schemes.Count * 100m, 1)
+                : 0m;
+
+            // Milestone attainment: count students with at least one acquired requirement
+            // Previously hardcoded as 96.2m — now computed from real RequirementStatus records
+            var acquiredCount = await _unitOfWork.GetRepository<RequirementStatus>()
+                .GetQueryable(s => s.Acquired)
+                .Select(s => s.StudentId)
+                .Distinct()
+                .CountAsync();
+
+            decimal milestoneAttainmentRate = totalStudents > 0
+                ? Math.Round((decimal)acquiredCount / totalStudents * 100m, 1)
+                : 0m;
+
+            // QA threshold from configuration — not hardcoded as 80
+            decimal qaThreshold = _schoolSettings.QualityAssuranceVettingThreshold;
+            string standing = vettedRate >= qaThreshold
+                ? "Approved for Terminal Examinations"
+                : (schemes.Any() ? "In Review by Head of Schools" : "Pending Submission");
+
+            return new AcademicSnapshotResponse
+            {
+                Term = termName,
                 EarlyYears = new EarlyYearsSnapshot
                 {
                     Focus = "Early Literacy & Motor Skills",
-                    MilestoneAttainmentRate = 96.2m,
-                    EnrolledPupils = 78
+                    MilestoneAttainmentRate = milestoneAttainmentRate,
+                    EnrolledPupils = totalStudents
                 },
                 JuniorBasic = new JuniorBasicSnapshot
                 {
                     Focus = "Cognitive & Terminal Assessment Broadsheet",
-                    AverageScore = 85.7m,
-                    PassRate = 100m,
-                    EvaluatedScholars = 6
+                    AverageScore = averageScore,
+                    PassRate = passRate,
+                    EvaluatedScholars = distinctEvaluated
                 },
                 QualityAssurance = new QualityAssuranceSnapshot
                 {
-                    SchemesVettedRate = 100m,
-                    Standing = "Approved for Terminal Examinations"
+                    SchemesVettedRate = vettedRate,
+                    Standing = standing
                 }
-            });
+            };
         }
 
         public async Task<IEnumerable<BudgetItemProgress>> GetBudgetProgress()
         {
+            var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>()
+                .GetSingleByAsync(t => t.IsActive);
+
             var requisitions = await _unitOfWork.GetRepository<Requisition>().GetQueryable().ToListAsync();
+
+            // Load all configured department budgets for the active term in one query
+            var departmentBudgets = activeTerm != null
+                ? await _unitOfWork.GetRepository<DepartmentBudget>()
+                    .GetQueryable(b => b.AcademicTermId == activeTerm.Id)
+                    .ToListAsync()
+                : new List<DepartmentBudget>();
 
             var groups = requisitions.GroupBy(r => r.Department);
             var progress = new List<BudgetItemProgress>();
 
             foreach (var g in groups)
             {
-                var budget = 500000m;
+                // Budget is read from the DepartmentBudget table — no longer hardcoded as 500,000
+                var budgetRecord = departmentBudgets.FirstOrDefault(b => b.Department == g.Key);
+                decimal budget = budgetRecord?.AllocatedAmount ?? _schoolSettings.DefaultDepartmentBudget;
+
                 var actual = g.Where(r => r.Status == RequisitionStatus.Approved).Sum(r => r.Amount);
                 progress.Add(new BudgetItemProgress
                 {

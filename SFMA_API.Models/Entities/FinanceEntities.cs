@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -97,5 +97,20 @@ namespace SFMA_API.Models.Entities
         public string AccountNumber { get; set; } = string.Empty;
         public string SortCode { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Stores the approved budget allocation per department per academic term.
+    /// Used by the budget progress dashboard to compare actual spend against planned budget.
+    /// Replace the old hardcoded 500,000 fallback.
+    /// </summary>
+    public class DepartmentBudget : BaseEntity
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string Department { get; set; } = string.Empty;
+        public Guid AcademicTermId { get; set; }
+        public decimal AllocatedAmount { get; set; }
+
+        public virtual AcademicTerm AcademicTerm { get; set; } = null!;
     }
 }

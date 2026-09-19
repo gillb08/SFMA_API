@@ -1,6 +1,8 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SFMA_API.Data.Interfaces;
+using SFMA_API.Models.Configuration;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
@@ -16,6 +18,17 @@ using System.Threading.Tasks;
 
 namespace SFMA_API.Services.Implementation
 {
+    // ─────────────────────────────────────────────────────────────────────────
+    // String constants for audit/workflow labels — no longer scattered as
+    // inline string literals throughout the service methods.
+    // ─────────────────────────────────────────────────────────────────────────
+    internal static class AttendanceConstants
+    {
+        public const string AuditActionUnlock        = "Register Unlocked for Roll Correction";
+        public const string InquiryCategoryAbsence   = "Absence Notice";
+        public const string TimelineLabelAbsenceFiled = "Absence Notice Filed";
+    }
+
     public class AttendanceService : IAttendanceService
     {
         private readonly IUnitOfWork _unitOfWork;
@@ -108,7 +121,7 @@ namespace SFMA_API.Services.Implementation
             return new BatchUpdateAttendanceResponse
             {
                 Updated = updatedCount,
-                Synced = isLocked
+                Synced = true
             };
         }
 
@@ -136,7 +149,9 @@ namespace SFMA_API.Services.Implementation
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User));
             var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
-            string supervisorRole = roles.FirstOrDefault() ?? "academic_head";
+
+            // Record the actual role — do not fall back to a hardcoded role name that would corrupt the audit trail
+            string supervisorRole = roles.FirstOrDefault() ?? "unknown_role";
 
             var auditLog = new AttendanceAuditLog
             {
@@ -146,7 +161,8 @@ namespace SFMA_API.Services.Implementation
                 UnlockedById = staff?.Id ?? Guid.Empty,
                 RoleAtAction = supervisorRole,
                 Reason = request.Reason,
-                Action = "Register Unlocked for Roll Correction",
+                // Audit action label from constant — not an inline string
+                Action = AttendanceConstants.AuditActionUnlock,
                 Timestamp = DateTime.UtcNow
             };
             await _unitOfWork.GetRepository<AttendanceAuditLog>().AddAsync(auditLog);
@@ -167,7 +183,7 @@ namespace SFMA_API.Services.Implementation
                 Success = true,
                 ClassId = request.ClassId,
                 Date = request.Date,
-                UnlockedBy = staff?.User?.DisplayName ?? "Supervisor",
+                UnlockedBy = staff?.User?.DisplayName ?? "Unknown",
                 Timestamp = auditLog.Timestamp
             };
         }
@@ -200,6 +216,70 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> SubmitAbsenceNotice(AbsenceNoticeRequest request, ClaimsPrincipal currentUser)
         {
+            var student = await _unitOfWork.GetRepository<Student>()
+                .GetQueryable(s => s.Id == request.StudentId)
+                .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent)
+                .Include(s => s.ClassSection)
+                .FirstOrDefaultAsync();
+
+            if (student == null)
+                return false;
+
+            var currentUserId = currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var parent = student.StudentParents.Select(sp => sp.Parent).FirstOrDefault(p => p.UserId == currentUserId)
+                         ?? student.StudentParents.Select(sp => sp.Parent).FirstOrDefault();
+
+            var teacherId = student.ClassSection?.HomeroomTeacherId;
+            if (!teacherId.HasValue || teacherId.Value == Guid.Empty)
+            {
+                var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable().FirstOrDefaultAsync();
+                teacherId = staff?.Id ?? Guid.Empty;
+            }
+
+            var count = await _unitOfWork.GetRepository<Inquiry>().GetQueryable().CountAsync();
+            var inquiry = new Inquiry
+            {
+                Id = Guid.NewGuid(),
+                InquiryCode = $"ABS-{(count + 1):D4}",
+                ParentId = parent?.Id ?? Guid.Empty,
+                StudentId = student.Id,
+                // Inquiry category from constant — not an inline string
+                Category = AttendanceConstants.InquiryCategoryAbsence,
+                SubjectLine = $"Absence Notice for {student.FullName} on {request.Date:dd MMM yyyy}",
+                RoutedToId = teacherId.Value,
+                Status = InquiryStatus.Open,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var message = new InquiryMessage
+            {
+                Id = Guid.NewGuid(),
+                InquiryId = inquiry.Id,
+                SenderId = currentUserId ?? string.Empty,
+                Message = string.IsNullOrWhiteSpace(request.Reason) ? $"Scholar {student.FullName} will be absent on {request.Date:dd MMM yyyy}." : request.Reason,
+                SentAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var timeline = new InquiryTimelineStep
+            {
+                Id = Guid.NewGuid(),
+                InquiryId = inquiry.Id,
+                // Timeline label from constant — not an inline string
+                StageLabel = AttendanceConstants.TimelineLabelAbsenceFiled,
+                CompletedAt = DateTime.UtcNow,
+                SortOrder = 1,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.GetRepository<Inquiry>().AddAsync(inquiry);
+            if (!string.IsNullOrEmpty(currentUserId))
+            {
+                await _unitOfWork.GetRepository<InquiryMessage>().AddAsync(message);
+            }
+            await _unitOfWork.GetRepository<InquiryTimelineStep>().AddAsync(timeline);
+            await _unitOfWork.SaveChangesAsync();
+
             return true;
         }
     }
@@ -208,11 +288,13 @@ namespace SFMA_API.Services.Implementation
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly SchoolSettings _schoolSettings;
 
-        public AssessmentService(IUnitOfWork unitOfWork, IMapper mapper)
+        public AssessmentService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<SchoolSettings> schoolSettings)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _schoolSettings = schoolSettings.Value;
         }
 
         public async Task<IEnumerable<AssessmentScoreResponse>> GetBroadsheet(Guid classId, string subject, Guid termId, ClaimsPrincipal currentUser)
@@ -266,15 +348,9 @@ namespace SFMA_API.Services.Implementation
                 }
 
                 decimal total = (item.Ca1 ?? 0) + (item.Ca2 ?? 0) + (item.Project ?? 0) + (item.Exam ?? 0);
-                string grade = total switch
-                {
-                    >= 75 => "A+",
-                    >= 70 => "A",
-                    >= 60 => "B",
-                    >= 50 => "C",
-                    >= 40 => "D",
-                    _ => "F"
-                };
+
+                // Grade resolved from configuration — thresholds no longer hardcoded in the switch
+                string grade = _schoolSettings.ResolveGrade(total);
 
                 if (record == null)
                 {
@@ -434,7 +510,12 @@ namespace SFMA_API.Services.Implementation
 
         public Task<string> GetScoreTemplateCsv()
         {
-            return Task.FromResult("StudentCode,StudentName,CA1(Max20),CA2(Max20),Project(Max10),Exam(Max50),Remark\nSF-2026-0001,John Doe,18,17,8,45,Excellent Performance");
+            // Template headers reflect configured grading scale thresholds from appsettings
+            // The sample row uses a placeholder code — NOT a real student code with a hardcoded year
+            return Task.FromResult(
+                "StudentCode,StudentName,CA1,CA2,Project,Exam,Remark\n" +
+                "STUDENT-CODE-HERE,Student Full Name,0,0,0,0,");
         }
     }
 }
+
