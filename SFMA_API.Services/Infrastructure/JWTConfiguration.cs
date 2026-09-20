@@ -5,7 +5,7 @@
         public string Secret { get; set; } = "SFMA_SUPER_SECRET_KEY_FOR_JWT_AUTHENTICATION_2026_CHANGE_IN_PRODUCTION";
         public string Issuer { get; set; } = "SFMA";
         public string Audience { get; set; } = "SFMA_Users";
-        public string Expires { get; set; } = "24";
+        public double AccessTokenExpirationMinutes { get; set; } = 120;
     }
 
     public class JWTToken

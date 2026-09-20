@@ -94,7 +94,10 @@ namespace SFMA_API.Api.Controllers
         [NonAction]
         public string? GetUserId()
         {
-            return HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            // "Id" is our canonical JWT claim. NameIdentifier is retained for
+            // interoperability with ASP.NET Identity and older issued tokens.
+            return HttpContext.User.FindFirstValue("Id")
+                ?? HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         }
     }
 }

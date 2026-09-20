@@ -50,6 +50,15 @@ namespace SFMA_API.Services.Infrastructure
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
+
+                // The first deployed API used operational titles (principal,
+                // bursar, etc.) in its endpoint attributes while the portal
+                // and seed data use canonical role keys. Keep old attributes
+                // functional while issuing one consistent portal role.
+                foreach (var compatibilityRole in GetCompatibilityRoles(role))
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, compatibilityRole));
+                }
             }
 
             if (additionalClaims != null)
@@ -61,7 +70,7 @@ namespace SFMA_API.Services.Infrastructure
             {
                 Subject = new ClaimsIdentity(claims),
                 Expires = string.IsNullOrWhiteSpace(expires)
-                    ? DateTime.UtcNow.AddHours(double.TryParse(_jwtConfiguration.Expires, out var h) ? h : 24)
+                    ? DateTime.UtcNow.AddMinutes(_jwtConfiguration.AccessTokenExpirationMinutes)
                     : DateTime.UtcNow.AddMinutes(double.Parse(expires)),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
                 Issuer = _jwtConfiguration.Issuer,
@@ -81,11 +90,21 @@ namespace SFMA_API.Services.Infrastructure
 
         public async Task<string> GenerateRefreshToken(ApplicationUser user)
         {
-            await _userManager.RemoveAuthenticationTokenAsync(user, "SFMA", "RefreshToken");
+            var tokenStoreProvider = _configuration["SchoolSettings:TokenProviderName"] ?? "SFMA";
+            await _userManager.RemoveAuthenticationTokenAsync(user, tokenStoreProvider, "RefreshToken");
             string? newRefreshToken = await _userManager.GenerateUserTokenAsync(user, TokenProviders.RefreshTokenProvider, "RefreshToken");
-            await _userManager.SetAuthenticationTokenAsync(user, "SFMA", "RefreshToken", newRefreshToken ?? Guid.NewGuid().ToString());
+            await _userManager.SetAuthenticationTokenAsync(user, tokenStoreProvider, "RefreshToken", newRefreshToken ?? Guid.NewGuid().ToString());
             return newRefreshToken ?? Guid.NewGuid().ToString();
         }
+
+        private static IEnumerable<string> GetCompatibilityRoles(string role) => role switch
+        {
+            "academic_admin" => new[] { "principal", "vice_principal_acad", "admissions_officer" },
+            "academic_head" => new[] { "vice_principal_acad" },
+            "financial_admin" => new[] { "bursar" },
+            "financial_head" => new[] { "bursar" },
+            _ => Array.Empty<string>()
+        };
 
         public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
         {

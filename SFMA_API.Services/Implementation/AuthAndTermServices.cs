@@ -176,8 +176,9 @@ namespace SFMA_API.Services.Implementation
                 throw new InvalidOperationException("Invalid user");
             }
 
+            var storedRefreshToken = await _userManager.GetAuthenticationTokenAsync(user, _schoolSettings.TokenProviderName, "RefreshToken");
             bool isRefreshTokenValid = await _userManager.VerifyUserTokenAsync(user, TokenProviders.RefreshTokenProvider, "RefreshToken", request.RefreshToken);
-            if (!isRefreshTokenValid)
+            if (!isRefreshTokenValid || storedRefreshToken != request.RefreshToken)
             {
                 throw new InvalidOperationException("Invalid refresh token");
             }
@@ -292,4 +293,3 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
-
