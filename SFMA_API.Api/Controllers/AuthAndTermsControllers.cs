@@ -116,7 +116,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpPut("{id:guid}")]
         [SwaggerOperation(Summary = "Update term dates and status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -126,7 +126,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpPost("{id:guid}/deadlines")]
         [SwaggerOperation(Summary = "Configure assessment and gradebook submission deadlines")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]

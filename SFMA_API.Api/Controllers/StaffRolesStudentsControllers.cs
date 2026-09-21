@@ -21,7 +21,7 @@ namespace SFMA_API.Api.Controllers
             _staffService = staffService;
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
         [HttpGet]
         [SwaggerOperation(Summary = "Get all staff with optional filters and pagination")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -31,7 +31,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpGet("{id:guid}")]
         [SwaggerOperation(Summary = "Get staff details by ID")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -42,7 +42,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpPost]
         [SwaggerOperation(Summary = "Create a new staff account")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -52,7 +52,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpPut("{id:guid}")]
         [SwaggerOperation(Summary = "Update staff profile")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -62,7 +62,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpPatch("{id:guid}/status")]
         [SwaggerOperation(Summary = "Update staff active status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -93,7 +93,7 @@ namespace SFMA_API.Api.Controllers
             _roleService = roleService;
         }
 
-        [Authorize(Roles = "super_admin,principal")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpGet]
         [SwaggerOperation(Summary = "Get all configured portal roles")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -103,7 +103,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpGet("{roleKey}/permissions")]
         [SwaggerOperation(Summary = "Get permissions for specific role")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -146,7 +146,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,admissions_officer")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpPost("admit")]
         [SwaggerOperation(Summary = "Admit a new student with duplicate detection (409 Conflict if duplicate)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -156,7 +156,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,admissions_officer,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,teacher")]
         [HttpPut("{id:guid}/biodata")]
         [SwaggerOperation(Summary = "Update student bio data")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -177,7 +177,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,admissions_officer")]
+        [Authorize(Roles = "super_admin,academic_admin")]
         [HttpPost("batch-print")]
         [SwaggerOperation(Summary = "Batch print student ID cards as PDF")]
         [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]

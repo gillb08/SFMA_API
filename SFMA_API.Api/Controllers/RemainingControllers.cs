@@ -43,7 +43,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,bursar,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin,teacher")]
         [HttpPost]
         [SwaggerOperation(Summary = "Create a new requisition")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -53,7 +53,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
         [HttpPost("{id:guid}/approve")]
         [SwaggerOperation(Summary = "Advance requisition approval stage (AcademicHead -> FinancialHead -> SuperAdmin)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -63,7 +63,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
         [HttpPost("{id:guid}/query")]
         [SwaggerOperation(Summary = "Query / reject requisition")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -94,7 +94,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost]
         [SwaggerOperation(Summary = "Add scheme of work week")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -104,7 +104,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPut("{id:guid}")]
         [SwaggerOperation(Summary = "Update scheme of work entry")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -114,7 +114,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpPost("{id:guid}/vet")]
         [SwaggerOperation(Summary = "Vet scheme of work entry by Head of School")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -145,7 +145,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpPut("{classId:guid}")]
         [SwaggerOperation(Summary = "Update class timetable slots")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -176,7 +176,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost]
         [SwaggerOperation(Summary = "Submit lesson note for review")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -186,7 +186,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpPost("{id:guid}/review")]
         [SwaggerOperation(Summary = "Review/Approve/Request revision on lesson note")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -217,7 +217,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost]
         [SwaggerOperation(Summary = "Create a homework or project assignment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -227,7 +227,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPut("{id:guid}")]
         [SwaggerOperation(Summary = "Update assignment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -309,7 +309,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,bursar,admissions_officer")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
         [HttpPatch("{id:guid}/status")]
         [SwaggerOperation(Summary = "Update inquiry status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -340,7 +340,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost("{id:guid}/status")]
         [SwaggerOperation(Summary = "Toggle acquired status of requirement item for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -371,7 +371,7 @@ namespace SFMA_API.Api.Controllers
             _dashboardService = dashboardService;
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
         [HttpGet("executive")]
         [SwaggerOperation(Summary = "Get executive dashboard KPIs")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -381,7 +381,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpGet("academic-snapshot")]
         [SwaggerOperation(Summary = "Get academic snapshot and terminal performance indicators")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -391,7 +391,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,financial_admin")]
         [HttpGet("budget-progress")]
         [SwaggerOperation(Summary = "Get departmental budget vs actual progress")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -401,7 +401,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,financial_admin")]
         [HttpGet("financial")]
         [SwaggerOperation(Summary = "Get financial performance dashboard")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]

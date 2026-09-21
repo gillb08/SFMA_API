@@ -42,7 +42,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost("batch")]
         [SwaggerOperation(Summary = "Batch mark attendance for class (Enforces 423 Locked if past 10:00 AM)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -52,7 +52,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost("lock")]
         [SwaggerOperation(Summary = "Manually lock attendance register")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -62,7 +62,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpPost("unlock")]
         [SwaggerOperation(Summary = "Unlock attendance register with supervisor audit logging")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -72,7 +72,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpGet("audit-logs")]
         [SwaggerOperation(Summary = "Get attendance unlock audit logs")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -82,7 +82,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpGet("export-csv")]
         [SwaggerOperation(Summary = "Export attendance as CSV")]
         [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
@@ -124,7 +124,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost("batch")]
         [SwaggerOperation(Summary = "Batch enter CA and Exam scores (Enforces 403 Forbidden on deadline elapsed)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -134,7 +134,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost("submit")]
         [SwaggerOperation(Summary = "Submit broadsheet for approval")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -144,7 +144,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
         [HttpPost("approve")]
         [SwaggerOperation(Summary = "Approve and publish broadsheet")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -175,7 +175,7 @@ namespace SFMA_API.Api.Controllers
             return File(bytes, "text/csv", "broadsheet_results.csv");
         }
 
-        [Authorize(Roles = "super_admin,principal,vice_principal_acad,teacher")]
+        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
         [HttpPost("import-csv")]
         [SwaggerOperation(Summary = "Import assessment scores via CSV string payload")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -218,7 +218,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,principal,bursar")]
+        [Authorize(Roles = "super_admin,academic_admin,financial_admin")]
         [HttpGet("ledger")]
         [SwaggerOperation(Summary = "Get fee ledger transactions with filters")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -238,7 +238,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,bursar,parent,student")]
+        [Authorize(Roles = "super_admin,financial_admin,parent,student")]
         [HttpPost("teller")]
         [SwaggerOperation(Summary = "Post a bank teller or electronic payment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -248,7 +248,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,bursar")]
+        [Authorize(Roles = "super_admin,financial_admin")]
         [HttpPost("teller/{id:guid}/verify")]
         [SwaggerOperation(Summary = "Verify and issue official receipt for fee payment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -279,7 +279,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,bursar")]
+        [Authorize(Roles = "super_admin,financial_admin")]
         [HttpPost("reminders")]
         [SwaggerOperation(Summary = "Queue automated fee payment reminders")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]

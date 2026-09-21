@@ -50,15 +50,6 @@ namespace SFMA_API.Services.Infrastructure
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
-
-                // The first deployed API used operational titles (principal,
-                // bursar, etc.) in its endpoint attributes while the portal
-                // and seed data use canonical role keys. Keep old attributes
-                // functional while issuing one consistent portal role.
-                foreach (var compatibilityRole in GetCompatibilityRoles(role))
-                {
-                    claims.Add(new Claim(ClaimTypes.Role, compatibilityRole));
-                }
             }
 
             if (additionalClaims != null)
@@ -96,15 +87,6 @@ namespace SFMA_API.Services.Infrastructure
             await _userManager.SetAuthenticationTokenAsync(user, tokenStoreProvider, "RefreshToken", newRefreshToken ?? Guid.NewGuid().ToString());
             return newRefreshToken ?? Guid.NewGuid().ToString();
         }
-
-        private static IEnumerable<string> GetCompatibilityRoles(string role) => role switch
-        {
-            "academic_admin" => new[] { "principal", "vice_principal_acad", "admissions_officer" },
-            "academic_head" => new[] { "vice_principal_acad" },
-            "financial_admin" => new[] { "bursar" },
-            "financial_head" => new[] { "bursar" },
-            _ => Array.Empty<string>()
-        };
 
         public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
         {
