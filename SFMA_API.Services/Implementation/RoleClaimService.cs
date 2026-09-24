@@ -59,6 +59,7 @@ namespace SFMA_API.Services.Implementation
         public async Task<IEnumerable<RoleResponse>> GetAllRoles()
         {
             var roles = await _roleManager.Roles
+                .AsNoTracking()
                 .Include(r => r.RoleClaims)
                 .OrderBy(r => r.Name)
                 .ToListAsync();
@@ -69,6 +70,7 @@ namespace SFMA_API.Services.Implementation
         public async Task<RoleResponse?> GetRolePermissions(string roleKey)
         {
             var role = await _roleManager.Roles
+                .AsNoTracking()
                 .Include(r => r.RoleClaims)
                 .FirstOrDefaultAsync(r => r.Key == roleKey || r.Name == roleKey || r.Id == roleKey);
 
@@ -86,14 +88,8 @@ namespace SFMA_API.Services.Implementation
                 throw new KeyNotFoundException($"Role '{request.RoleId ?? request.RoleKey}' was not found.");
             }
 
-            var roleClaimRepo = _unitOfWork.GetRepository<ApplicationRoleClaim>();
-
-            // Remove existing role claims for this role
-            var existingClaims = await roleClaimRepo.GetByAsync(rc => rc.RoleId == role.Id);
-            foreach (var existing in existingClaims)
-            {
-                await roleClaimRepo.DeleteAsync(existing);
-            }
+            // Clear existing claims via tracked collection (EF Core handles cascade removal)
+            role.RoleClaims.Clear();
 
             // Add requested claims
             var distinctClaims = request.Claims
@@ -103,14 +99,13 @@ namespace SFMA_API.Services.Implementation
 
             foreach (var claimVal in distinctClaims)
             {
-                var newClaim = new ApplicationRoleClaim
+                role.RoleClaims.Add(new ApplicationRoleClaim
                 {
                     RoleId = role.Id,
                     ClaimType = "permission",
                     ClaimValue = claimVal,
                     Active = request.Active
-                };
-                await roleClaimRepo.AddAsync(newClaim);
+                });
             }
 
             role.UpdatedAt = DateTime.UtcNow;
@@ -124,20 +119,17 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> UpdateUserClaims(UpdateUserClaimsRequest request)
         {
-            var user = await _userManager.FindByIdAsync(request.UserId);
+            var user = await _userManager.Users
+                .Include(u => u.Claims)
+                .FirstOrDefaultAsync(u => u.Id == request.UserId);
+
             if (user == null)
             {
                 throw new KeyNotFoundException($"User with ID '{request.UserId}' was not found.");
             }
 
-            var userClaimRepo = _unitOfWork.GetRepository<ApplicationUserClaim>();
-
-            // Remove existing direct user claims
-            var existingClaims = await userClaimRepo.GetByAsync(uc => uc.UserId == user.Id);
-            foreach (var existing in existingClaims)
-            {
-                await userClaimRepo.DeleteAsync(existing);
-            }
+            // Clear existing direct user claims via tracked collection
+            user.Claims.Clear();
 
             // Add new claims
             var distinctClaims = request.Claims
@@ -147,18 +139,16 @@ namespace SFMA_API.Services.Implementation
 
             foreach (var claimVal in distinctClaims)
             {
-                var newClaim = new ApplicationUserClaim
+                user.Claims.Add(new ApplicationUserClaim
                 {
                     UserId = user.Id,
                     ClaimType = "permission",
                     ClaimValue = claimVal,
                     Active = request.Active
-                };
-                await userClaimRepo.AddAsync(newClaim);
+                });
             }
 
             user.UpdatedAt = DateTime.UtcNow;
-            await _userManager.UpdateAsync(user);
             await _unitOfWork.SaveChangesAsync();
 
             // Invalidate cached user permissions for this specific user
