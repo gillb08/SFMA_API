@@ -22,13 +22,20 @@ namespace SFMA_API.Services.Implementation
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<ApplicationRole> _roleManager;
         private readonly IMapper _mapper;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public StaffService(IUnitOfWork unitOfWork, UserManager<ApplicationUser> userManager, RoleManager<ApplicationRole> roleManager, IMapper mapper)
+        public StaffService(
+            IUnitOfWork unitOfWork,
+            UserManager<ApplicationUser> userManager,
+            RoleManager<ApplicationRole> roleManager,
+            IMapper mapper,
+            ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _userManager = userManager;
             _roleManager = roleManager;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
         public async Task<PagedResponse<StaffResponse>> GetAllStaff(string? department, string? roleKey, string? status, RequestParameters parameters)
@@ -137,6 +144,16 @@ namespace SFMA_API.Services.Implementation
             var userResponse = _mapper.Map<UserProfileResponse>(user);
             userResponse.Role = request.RoleKey;
 
+            // Background notification dispatch to staff email and phone
+            _ = Task.Run(() => _notificationService.SendStaffCredentialsAsync(
+                request.FullName,
+                request.Email,
+                request.Phone,
+                staffCode,
+                request.Department,
+                request.RoleKey,
+                tempPassword));
+
             return new CreateStaffResponse
             {
                 Staff = staffResponse,
@@ -219,6 +236,13 @@ namespace SFMA_API.Services.Implementation
             {
                 throw new InvalidOperationException(string.Join("\n", res.Errors.Select(e => e.Description)));
             }
+
+            // Dispatch notification to staff
+            _ = Task.Run(() => _notificationService.SendStaffPasswordResetAsync(
+                staff.User.DisplayName,
+                staff.User.Email ?? string.Empty,
+                staff.Phone,
+                newPassword));
 
             return newPassword;
         }

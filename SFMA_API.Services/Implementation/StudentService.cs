@@ -25,17 +25,20 @@ namespace SFMA_API.Services.Implementation
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IMapper _mapper;
         private readonly SchoolSettings _schoolSettings;
+        private readonly ISchoolNotificationService _notificationService;
 
         public StudentService(
             IUnitOfWork unitOfWork,
             UserManager<ApplicationUser> userManager,
             IMapper mapper,
-            IOptions<SchoolSettings> schoolSettings)
+            IOptions<SchoolSettings> schoolSettings,
+            ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _userManager = userManager;
             _mapper = mapper;
             _schoolSettings = schoolSettings.Value;
+            _notificationService = notificationService;
         }
 
         public async Task<PagedResponse<StudentResponse>> GetAllStudents(Guid? classId, StudentStatus? status, RequestParameters parameters, ClaimsPrincipal currentUser)
@@ -262,6 +265,21 @@ namespace SFMA_API.Services.Implementation
             var cardResponse = _mapper.Map<IdCardResponse>(idCard);
             cardResponse.StudentName = student.FullName;
             cardResponse.StudentCode = student.StudentCode;
+
+            // Retrieve class section name for email template if available
+            var classSection = await _unitOfWork.GetRepository<ClassSection>().GetByIdAsync(request.ClassAdmitted);
+            string className = classSection?.Name ?? "Admitted Class";
+
+            // Fire and forget / background dispatch notification to parent & scholar
+            _ = Task.Run(() => _notificationService.SendParentAdmissionCredentialsAsync(
+                request.GuardianName,
+                parentEmail,
+                request.GuardianPhone,
+                request.FullName,
+                studentCode,
+                className,
+                "Student@123!",
+                "Parent@123!"));
 
             return new AdmitStudentResponse
             {

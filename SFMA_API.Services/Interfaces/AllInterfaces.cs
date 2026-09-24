@@ -163,4 +163,42 @@ namespace SFMA_API.Services.Interfaces
         Task<IEnumerable<BudgetItemProgress>> GetBudgetProgress();
         Task<FinancialDashboardResponse> GetFinancialDashboard();
     }
+
+    public interface IEmailSender
+    {
+        Task<bool> SendEmailAsync(SFMA_API.Models.Dtos.EmailMessage message);
+    }
+
+    public interface ISmsSender
+    {
+        Task<bool> SendSmsAsync(SFMA_API.Models.Dtos.SmsMessage message);
+    }
+
+    public interface ISchoolNotificationService
+    {
+        Task SendParentAdmissionCredentialsAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            string classAdmitted,
+            string studentPassword,
+            string parentPassword);
+
+        Task SendStaffCredentialsAsync(
+            string staffName,
+            string staffEmail,
+            string staffPhone,
+            string staffCode,
+            string department,
+            string roleName,
+            string tempPassword);
+
+        Task SendStaffPasswordResetAsync(
+            string staffName,
+            string staffEmail,
+            string staffPhone,
+            string tempPassword);
+    }
 }

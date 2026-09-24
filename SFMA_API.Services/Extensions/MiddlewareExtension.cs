@@ -34,6 +34,21 @@ namespace SFMA_API.Services.Extensions
             services.AddTransient<ILessonNoteAndAssignmentService, LessonNoteAndAssignmentService>();
             services.AddTransient<IInquiryAndRequirementService, InquiryAndRequirementService>();
             services.AddTransient<IDashboardService, DashboardService>();
+
+            // Notification System & External Gateways
+            services.AddScoped<ISchoolNotificationService, SchoolNotificationService>();
+            services.AddHttpClient<IEmailSender, ResendEmailSender>((sp, client) =>
+            {
+                var emailOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SFMA_API.Models.Configuration.EmailOptions>>().Value;
+                string baseUrl = emailOpts.Resend?.BaseUrl ?? "https://api.resend.com";
+                client.BaseAddress = new System.Uri(baseUrl.TrimEnd('/') + '/');
+            });
+            services.AddHttpClient<ISmsSender, SmsSender>((sp, client) =>
+            {
+                var smsOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SFMA_API.Models.Configuration.SmsOptions>>().Value;
+                string baseUrl = smsOpts.BaseUrl ?? "https://api.ng.termii.com";
+                client.BaseAddress = new System.Uri(baseUrl.TrimEnd('/') + '/');
+            });
         }
     }
 }

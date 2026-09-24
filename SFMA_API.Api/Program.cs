@@ -43,6 +43,8 @@ builder.Host.UseSerilog((ctx, lc) => lc
 // Add services
 builder.Services.Configure<JWTConfiguration>(builder.Configuration.GetSection("JwtConfig"));
 builder.Services.Configure<SFMA_API.Models.Configuration.SchoolSettings>(builder.Configuration.GetSection("SchoolSettings"));
+builder.Services.Configure<SFMA_API.Models.Configuration.EmailOptions>(builder.Configuration.GetSection(SFMA_API.Models.Configuration.EmailOptions.SectionName));
+builder.Services.Configure<SFMA_API.Models.Configuration.SmsOptions>(builder.Configuration.GetSection(SFMA_API.Models.Configuration.SmsOptions.SectionName));
 
 static string ResolveConnectionString(IConfiguration config)
 {
