@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 namespace SFMA_API.Api.Controllers
 {
     [Route("api/v1/role-claims")]
-    [Route("api/RoleClaims")]
     [Authorize(Policy = "Authorization")]
     public class RoleClaimsController : BaseController
     {

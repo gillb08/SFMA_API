@@ -12,7 +12,6 @@ using System.Threading.Tasks;
 namespace SFMA_API.Api.Controllers
 {
     [Route("api/v1/menus")]
-    [Route("api/Menus")]
     [Authorize(Policy = "Authorization")]
     public class MenusController : BaseController
     {

@@ -35,6 +35,9 @@ namespace SFMA_API.Data.SeedData
             var roleManager = serviceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
             var seed = serviceProvider.GetService<Seed>() ?? new Seed();
 
+            // 0. Automatically apply any pending EF Core database migrations
+            await context.Database.MigrateAsync();
+
             // 1. Seed Roles & Role Claims
             foreach (string roleKey in seed.Roles)
             {
