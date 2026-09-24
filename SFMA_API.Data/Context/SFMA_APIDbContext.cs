@@ -46,6 +46,7 @@ namespace SFMA_API.Data.Context
         public virtual DbSet<IdCard> IdCards { get; set; } = null!;
         public virtual DbSet<BankAccount> BankAccounts { get; set; } = null!;
         public virtual DbSet<Menu> Menus { get; set; } = null!;
+        public virtual DbSet<DepartmentBudget> DepartmentBudgets { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -405,6 +406,15 @@ namespace SFMA_API.Data.Context
                 entity.HasOne(c => c.Student)
                     .WithOne(s => s.IdCard)
                     .HasForeignKey<IdCard>(c => c.StudentId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<DepartmentBudget>(entity =>
+            {
+                entity.Property(b => b.AllocatedAmount).HasColumnType("decimal(12,2)");
+                entity.HasOne(b => b.AcademicTerm)
+                    .WithMany()
+                    .HasForeignKey(b => b.AcademicTermId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
         }
