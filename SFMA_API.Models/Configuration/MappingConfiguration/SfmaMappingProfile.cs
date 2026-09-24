@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
@@ -13,7 +13,11 @@ namespace SFMA_API.Models.Configuration.MappingConfiguration
             CreateMap<ApplicationUser, UserProfileResponse>()
                 .ForMember(d => d.Role, opt => opt.MapFrom(s => s.UserRoles.FirstOrDefault() != null ? s.UserRoles.FirstOrDefault()!.Role.Key : string.Empty));
 
-            CreateMap<ApplicationRole, RoleResponse>();
+            CreateMap<ApplicationRole, RoleResponse>()
+                .ForMember(d => d.Claims, opt => opt.MapFrom(s => s.RoleClaims.Where(rc => rc.Active && !string.IsNullOrEmpty(rc.ClaimValue)).Select(rc => rc.ClaimValue).ToList()));
+
+            CreateMap<Menu, MenuResponse>()
+                .ForMember(d => d.Claims, opt => opt.MapFrom(s => !string.IsNullOrEmpty(s.ClaimsJson) ? System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.List<string>>(s.ClaimsJson, (System.Text.Json.JsonSerializerOptions?)null) ?? new System.Collections.Generic.List<string>() : new System.Collections.Generic.List<string>()));
 
             CreateMap<AcademicTerm, TermResponse>();
             CreateMap<UpdateTermRequest, AcademicTerm>();

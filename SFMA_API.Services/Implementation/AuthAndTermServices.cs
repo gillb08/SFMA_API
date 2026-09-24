@@ -1,5 +1,6 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SFMA_API.Data.Interfaces;
 using SFMA_API.Models.Configuration;
@@ -23,19 +24,22 @@ namespace SFMA_API.Services.Implementation
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
         private readonly SchoolSettings _schoolSettings;
+        private readonly IMenuService _menuService;
 
         public AuthenticationService(
             UserManager<ApplicationUser> userManager,
             IJWTAuthenticator jwtAuthenticator,
             IMapper mapper,
             IUnitOfWork unitOfWork,
-            IOptions<SchoolSettings> schoolSettings)
+            IOptions<SchoolSettings> schoolSettings,
+            IMenuService menuService)
         {
             _userManager = userManager;
             _jwtAuthenticator = jwtAuthenticator;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _schoolSettings = schoolSettings.Value;
+            _menuService = menuService;
         }
 
         public async Task<LoggedInUserResponse> Login(LoginRequest request)
@@ -87,12 +91,62 @@ namespace SFMA_API.Services.Implementation
                 PortalRedirect = portalRedirect
             };
 
+            var (menuItems, permissions) = await GetUserNavigationAndPermissions(user.Id, roles);
+
             return new LoggedInUserResponse
             {
                 Token = token.Token,
                 RefreshToken = refreshToken,
-                User = userProfile
+                User = userProfile,
+                MenuItems = menuItems,
+                Permissions = permissions
             };
+        }
+
+        private async Task<(List<string> MenuItems, List<string> Permissions)> GetUserNavigationAndPermissions(string userId, IList<string> roles)
+        {
+            var userRoleRepo = _unitOfWork.GetRepository<ApplicationUserRole>();
+            var userClaimRepo = _unitOfWork.GetRepository<ApplicationUserClaim>();
+
+            var userRoles = await userRoleRepo.GetQueryable(
+                include: q => q.Include(ur => ur.Role).ThenInclude(r => r.RoleClaims))
+                .Where(ur => ur.UserId == userId)
+                .ToListAsync();
+
+            var directClaims = await userClaimRepo.GetByAsync(r => r.UserId == userId && r.Active);
+
+            var permissionsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool isSuperAdmin = roles.Contains("super_admin") || roles.Contains("superadmin");
+
+            if (isSuperAdmin)
+            {
+                permissionsSet.Add("all");
+            }
+
+            foreach (var ur in userRoles)
+            {
+                if (ur.Role.Active)
+                {
+                    foreach (var rc in ur.Role.RoleClaims)
+                    {
+                        if (rc.Active && !string.IsNullOrWhiteSpace(rc.ClaimValue))
+                        {
+                            permissionsSet.Add(rc.ClaimValue.Trim().ToLowerInvariant());
+                        }
+                    }
+                }
+            }
+
+            foreach (var dc in directClaims)
+            {
+                if (!string.IsNullOrWhiteSpace(dc.ClaimValue))
+                {
+                    permissionsSet.Add(dc.ClaimValue.Trim().ToLowerInvariant());
+                }
+            }
+
+            var menuItems = await _menuService.GetMenuItems(permissionsSet);
+            return (menuItems.ToList(), permissionsSet.OrderBy(p => p).ToList());
         }
 
         public async Task<bool> Logout(string userId)
@@ -190,6 +244,8 @@ namespace SFMA_API.Services.Implementation
             string primaryRole = roles.FirstOrDefault()
                 ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
+            var (menuItems, permissions) = await GetUserNavigationAndPermissions(user.Id, roles);
+
             return new LoggedInUserResponse
             {
                 Token = newToken.Token,
@@ -202,7 +258,9 @@ namespace SFMA_API.Services.Implementation
                     Role = primaryRole,
                     AvatarUrl = user.AvatarUrl,
                     PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole)
-                }
+                },
+                MenuItems = menuItems,
+                Permissions = permissions
             };
         }
     }

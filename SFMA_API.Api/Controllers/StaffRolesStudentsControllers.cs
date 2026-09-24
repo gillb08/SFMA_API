@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 namespace SFMA_API.Api.Controllers
 {
     [Route("api/v1/staff")]
+    [Authorize(Policy = "Authorization")]
     public class StaffController : BaseController
     {
         private readonly IStaffService _staffService;
@@ -21,8 +23,7 @@ namespace SFMA_API.Api.Controllers
             _staffService = staffService;
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
-        [HttpGet]
+        [HttpGet("", Name = "get-all-staff")]
         [SwaggerOperation(Summary = "Get all staff with optional filters and pagination")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllStaff([FromQuery] string? department, [FromQuery] string? roleKey, [FromQuery] string? status, [FromQuery] RequestParameters parameters)
@@ -31,8 +32,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpGet("{id:guid}")]
+        [HttpGet("{id:guid}", Name = "get-staff-by-id")]
         [SwaggerOperation(Summary = "Get staff details by ID")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStaffById(Guid id)
@@ -42,8 +42,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpPost]
+        [HttpPost("", Name = "create-staff")]
         [SwaggerOperation(Summary = "Create a new staff account")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateStaff([FromBody] CreateStaffRequest request)
@@ -52,8 +51,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpPut("{id:guid}")]
+        [HttpPut("{id:guid}", Name = "update-staff")]
         [SwaggerOperation(Summary = "Update staff profile")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateStaff(Guid id, [FromBody] UpdateStaffRequest request)
@@ -62,8 +60,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpPatch("{id:guid}/status")]
+        [HttpPatch("{id:guid}/status", Name = "update-staff-status")]
         [SwaggerOperation(Summary = "Update staff active status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateStaffStatus(Guid id, [FromBody] UpdateStaffStatusRequest request)
@@ -72,8 +69,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin")]
-        [HttpPost("{id:guid}/reset-password")]
+        [HttpPost("{id:guid}/reset-password", Name = "admin-reset-password")]
         [SwaggerOperation(Summary = "Administrative reset of staff password")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> AdminResetPassword(Guid id)
@@ -84,6 +80,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/roles")]
+    [Authorize(Policy = "Authorization")]
     public class RolesController : BaseController
     {
         private readonly IRolePermissionService _roleService;
@@ -93,8 +90,7 @@ namespace SFMA_API.Api.Controllers
             _roleService = roleService;
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpGet]
+        [HttpGet("", Name = "get-all-roles")]
         [SwaggerOperation(Summary = "Get all configured portal roles")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllRoles()
@@ -103,8 +99,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpGet("{roleKey}/permissions")]
+        [HttpGet("{roleKey}/permissions", Name = "get-role-permissions")]
         [SwaggerOperation(Summary = "Get permissions for specific role")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetRolePermissions(string roleKey)
@@ -116,6 +111,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/students")]
+    [Authorize(Policy = "Authorization")]
     public class StudentsController : BaseController
     {
         private readonly IStudentService _studentService;
@@ -125,8 +121,7 @@ namespace SFMA_API.Api.Controllers
             _studentService = studentService;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-all-students")]
         [SwaggerOperation(Summary = "Get all students with filters and pagination")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllStudents([FromQuery] Guid? classId, [FromQuery] StudentStatus? status, [FromQuery] RequestParameters parameters)
@@ -135,8 +130,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("{id:guid}")]
+        [HttpGet("{id:guid}", Name = "get-student-by-id")]
         [SwaggerOperation(Summary = "Get student details by ID")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStudentById(Guid id)
@@ -146,8 +140,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpPost("admit")]
+        [HttpPost("admit", Name = "admit-student")]
         [SwaggerOperation(Summary = "Admit a new student with duplicate detection (409 Conflict if duplicate)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> AdmitStudent([FromBody] AdmitStudentRequest request)
@@ -156,8 +149,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,teacher")]
-        [HttpPut("{id:guid}/biodata")]
+        [HttpPut("{id:guid}/biodata", Name = "update-student-biodata")]
         [SwaggerOperation(Summary = "Update student bio data")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateBioData(Guid id, [FromBody] UpdateStudentBioDataRequest request)
@@ -166,8 +158,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("{id:guid}/id-card")]
+        [HttpGet("{id:guid}/id-card", Name = "get-student-id-card")]
         [SwaggerOperation(Summary = "Get student ID card")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetIdCard(Guid id)
@@ -177,8 +168,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpPost("batch-print")]
+        [HttpPost("batch-print", Name = "batch-print-id-cards")]
         [SwaggerOperation(Summary = "Batch print student ID cards as PDF")]
         [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
         public async Task<IActionResult> BatchPrint([FromBody] BatchPrintRequest request)

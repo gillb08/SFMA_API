@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -45,6 +45,7 @@ namespace SFMA_API.Data.Context
         public virtual DbSet<RequirementStatus> RequirementStatuses { get; set; } = null!;
         public virtual DbSet<IdCard> IdCards { get; set; } = null!;
         public virtual DbSet<BankAccount> BankAccounts { get; set; } = null!;
+        public virtual DbSet<Menu> Menus { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

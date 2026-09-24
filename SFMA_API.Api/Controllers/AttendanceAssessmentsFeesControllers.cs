@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
@@ -13,6 +14,7 @@ using System.Threading.Tasks;
 namespace SFMA_API.Api.Controllers
 {
     [Route("api/v1/attendance")]
+    [Authorize(Policy = "Authorization")]
     public class AttendanceController : BaseController
     {
         private readonly IAttendanceService _attendanceService;
@@ -22,8 +24,7 @@ namespace SFMA_API.Api.Controllers
             _attendanceService = attendanceService;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-daily-attendance")]
         [SwaggerOperation(Summary = "Get daily attendance for class")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAttendance([FromQuery] Guid classId, [FromQuery] DateTime date)
@@ -32,8 +33,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("student/{studentId:guid}/monthly")]
+        [HttpGet("student/{studentId:guid}/monthly", Name = "get-student-monthly-attendance")]
         [SwaggerOperation(Summary = "Get student monthly attendance summary")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStudentMonthlyAttendance(Guid studentId, [FromQuery] int month, [FromQuery] int year)
@@ -42,8 +42,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost("batch")]
+        [HttpPost("batch", Name = "batch-mark-attendance")]
         [SwaggerOperation(Summary = "Batch mark attendance for class (Enforces 423 Locked if past 10:00 AM)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> BatchUpdateAttendance([FromBody] BatchUpdateAttendanceRequest request)
@@ -52,8 +51,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost("lock")]
+        [HttpPost("lock", Name = "lock-attendance-register")]
         [SwaggerOperation(Summary = "Manually lock attendance register")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> LockAttendance([FromBody] LockAttendanceRequest request)
@@ -62,8 +60,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpPost("unlock")]
+        [HttpPost("unlock", Name = "unlock-attendance-register")]
         [SwaggerOperation(Summary = "Unlock attendance register with supervisor audit logging")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UnlockAttendance([FromBody] UnlockAttendanceRequest request)
@@ -72,8 +69,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpGet("audit-logs")]
+        [HttpGet("audit-logs", Name = "get-attendance-audit-logs")]
         [SwaggerOperation(Summary = "Get attendance unlock audit logs")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAuditLogs([FromQuery] Guid? classSectionId, [FromQuery] DateTime? date)
@@ -82,8 +78,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpGet("export-csv")]
+        [HttpGet("export-csv", Name = "export-attendance-csv")]
         [SwaggerOperation(Summary = "Export attendance as CSV")]
         [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
         public async Task<IActionResult> ExportAttendanceCsv([FromQuery] Guid classId, [FromQuery] DateTime startDate, [FromQuery] DateTime endDate)
@@ -93,8 +88,7 @@ namespace SFMA_API.Api.Controllers
             return File(bytes, "text/csv", "attendance_export.csv");
         }
 
-        [Authorize(Roles = "super_admin,parent,student")]
-        [HttpPost("absence-notice")]
+        [HttpPost("absence-notice", Name = "submit-absence-notice")]
         [SwaggerOperation(Summary = "Submit absence notice for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> SubmitAbsenceNotice([FromBody] AbsenceNoticeRequest request)
@@ -105,6 +99,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/assessments")]
+    [Authorize(Policy = "Authorization")]
     public class AssessmentsController : BaseController
     {
         private readonly IAssessmentService _assessmentService;
@@ -114,8 +109,7 @@ namespace SFMA_API.Api.Controllers
             _assessmentService = assessmentService;
         }
 
-        [Authorize]
-        [HttpGet("broadsheet")]
+        [HttpGet("broadsheet", Name = "get-assessment-broadsheet")]
         [SwaggerOperation(Summary = "Get assessment broadsheet for class and subject")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetBroadsheet([FromQuery] Guid classId, [FromQuery] string subject, [FromQuery] Guid termId)
@@ -124,8 +118,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost("batch")]
+        [HttpPost("batch", Name = "batch-update-scores")]
         [SwaggerOperation(Summary = "Batch enter CA and Exam scores (Enforces 403 Forbidden on deadline elapsed)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> BatchUpdateScores([FromBody] BatchUpdateAssessmentsRequest request)
@@ -134,8 +127,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost("submit")]
+        [HttpPost("submit", Name = "submit-broadsheet")]
         [SwaggerOperation(Summary = "Submit broadsheet for approval")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> SubmitBroadsheet([FromBody] BroadsheetActionRequest request)
@@ -144,8 +136,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpPost("approve")]
+        [HttpPost("approve", Name = "approve-broadsheet")]
         [SwaggerOperation(Summary = "Approve and publish broadsheet")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ApproveBroadsheet([FromBody] BroadsheetActionRequest request)
@@ -154,8 +145,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("student/{studentId:guid}")]
+        [HttpGet("student/{studentId:guid}", Name = "get-student-results")]
         [SwaggerOperation(Summary = "Get terminal assessment results for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStudentResults(Guid studentId, [FromQuery] Guid? termId)
@@ -164,8 +154,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("export")]
+        [HttpGet("export", Name = "export-broadsheet-results")]
         [SwaggerOperation(Summary = "Export broadsheet results as CSV or PDF")]
         [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
         public async Task<IActionResult> ExportResults([FromQuery] Guid classId, [FromQuery] string subject, [FromQuery] Guid termId, [FromQuery] string format = "csv")
@@ -175,8 +164,7 @@ namespace SFMA_API.Api.Controllers
             return File(bytes, "text/csv", "broadsheet_results.csv");
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost("import-csv")]
+        [HttpPost("import-csv", Name = "import-scores-csv")]
         [SwaggerOperation(Summary = "Import assessment scores via CSV string payload")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ImportScoresCsv([FromQuery] Guid classId, [FromQuery] string subject, [FromQuery] Guid termId, [FromBody] string csvContent)
@@ -185,8 +173,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("template")]
+        [HttpGet("template", Name = "get-score-template-csv")]
         [SwaggerOperation(Summary = "Download CSV template for scores upload")]
         [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetScoreTemplateCsv()
@@ -198,6 +185,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/fees")]
+    [Authorize(Policy = "Authorization")]
     public class FeesController : BaseController
     {
         private readonly IFeeService _feeService;
@@ -207,8 +195,7 @@ namespace SFMA_API.Api.Controllers
             _feeService = feeService;
         }
 
-        [Authorize]
-        [HttpGet("schedule")]
+        [HttpGet("schedule", Name = "get-fee-schedule")]
         [SwaggerOperation(Summary = "Get fee schedule for term and class")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetFeeSchedule([FromQuery] Guid termId, [FromQuery] Guid? classSectionId)
@@ -218,8 +205,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,financial_admin")]
-        [HttpGet("ledger")]
+        [HttpGet("ledger", Name = "get-fee-ledger")]
         [SwaggerOperation(Summary = "Get fee ledger transactions with filters")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetFeeLedger([FromQuery] FeeTransactionStatus? status, [FromQuery] RequestParameters parameters)
@@ -228,8 +214,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("student/{studentId:guid}/summary")]
+        [HttpGet("student/{studentId:guid}/summary", Name = "get-student-fee-summary")]
         [SwaggerOperation(Summary = "Get student fee summary and breakdown")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStudentFeeSummary(Guid studentId)
@@ -238,8 +223,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,financial_admin,parent,student")]
-        [HttpPost("teller")]
+        [HttpPost("teller", Name = "post-fee-teller")]
         [SwaggerOperation(Summary = "Post a bank teller or electronic payment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> PostTeller([FromBody] PostTellerRequest request)
@@ -248,8 +232,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,financial_admin")]
-        [HttpPost("teller/{id:guid}/verify")]
+        [HttpPost("teller/{id:guid}/verify", Name = "verify-fee-teller")]
         [SwaggerOperation(Summary = "Verify and issue official receipt for fee payment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> VerifyTeller(Guid id, [FromBody] VerifyTellerRequest request)
@@ -258,8 +241,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("student/{studentId:guid}/receipts")]
+        [HttpGet("student/{studentId:guid}/receipts", Name = "get-student-receipts")]
         [SwaggerOperation(Summary = "Get receipts issued for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStudentReceipts(Guid studentId)
@@ -268,8 +250,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("receipt/{receiptId:guid}/pdf")]
+        [HttpGet("receipt/{receiptId:guid}/pdf", Name = "get-receipt-pdf")]
         [SwaggerOperation(Summary = "Get receipt PDF download payload")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetReceiptPdf(Guid receiptId)
@@ -279,8 +260,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,financial_admin")]
-        [HttpPost("reminders")]
+        [HttpPost("reminders", Name = "queue-fee-reminders")]
         [SwaggerOperation(Summary = "Queue automated fee payment reminders")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> QueuePaymentReminders([FromBody] QueuePaymentRemindersRequest request)
@@ -289,8 +269,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("bank-accounts")]
+        [HttpGet("bank-accounts", Name = "get-bank-accounts")]
         [SwaggerOperation(Summary = "Get active school bank accounts")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetBankAccounts()
@@ -299,8 +278,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("statement/{studentId:guid}")]
+        [HttpGet("statement/{studentId:guid}", Name = "get-student-statement")]
         [SwaggerOperation(Summary = "Get statement of account for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetStatementOfAccount(Guid studentId)

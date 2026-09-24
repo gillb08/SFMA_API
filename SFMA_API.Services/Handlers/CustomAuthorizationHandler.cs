@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -6,9 +6,11 @@ using SFMA_API.Data.Interfaces;
 using SFMA_API.Logger;
 using SFMA_API.Models.Entities;
 using SFMA_API.Services.Infrastructure;
+using SFMA_API.Services.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace SFMA_API.Services.Handlers
@@ -17,17 +19,19 @@ namespace SFMA_API.Services.Handlers
     {
         private readonly IHttpContextAccessor _contextAccessor;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<ApplicationUserClaim> _userClaimRepo;
-        private readonly IRepository<ApplicationUserRole> _userRoleRepo;
         private readonly AppConstants _appConstants;
+        private readonly IPermissionCacheService _cacheService;
 
-        public CustomAuthorizationHandler(IHttpContextAccessor contextAccessor, IUnitOfWork unitOfWork, AppConstants appConstants)
+        public CustomAuthorizationHandler(
+            IHttpContextAccessor contextAccessor,
+            IUnitOfWork unitOfWork,
+            AppConstants appConstants,
+            IPermissionCacheService cacheService)
         {
             _contextAccessor = contextAccessor;
             _unitOfWork = unitOfWork;
-            _userRoleRepo = _unitOfWork.GetRepository<ApplicationUserRole>();
-            _userClaimRepo = _unitOfWork.GetRepository<ApplicationUserClaim>();
             _appConstants = appConstants;
+            _cacheService = cacheService;
         }
 
         protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, AuthorizationRequirement requirement)
@@ -35,9 +39,10 @@ namespace SFMA_API.Services.Handlers
             var httpContext = _contextAccessor.HttpContext;
             if (httpContext == null)
             {
-                throw new UnauthorizedAccessException("HttpContext is unavailable");
+                throw new UnauthorizedAccessException("HttpContext is unavailable.");
             }
 
+            // 1. API Key Bypass check
             if (httpContext.Request.Headers.TryGetValue("X-API-KEY", out var apiKey))
             {
                 if (apiKey == _appConstants.ApiKey)
@@ -48,7 +53,8 @@ namespace SFMA_API.Services.Handlers
                 throw new UnauthorizedAccessException("Invalid API Key");
             }
 
-            if (string.IsNullOrEmpty(context.User.Identity?.Name))
+            // 2. User Authentication Validation
+            if (context.User.Identity == null || !context.User.Identity.IsAuthenticated || string.IsNullOrEmpty(context.User.Identity.Name))
             {
                 throw new OperationCanceledException("User is unauthorized");
             }
@@ -59,44 +65,76 @@ namespace SFMA_API.Services.Handlers
                 throw new OperationCanceledException("User is unauthorized");
             }
 
+            // 3. Extract Endpoint Route Name
             var endpoint = httpContext.GetEndpoint();
             var endpointName = endpoint?.Metadata.GetMetadata<EndpointNameMetadata>()?.EndpointName;
 
-            // If no specific endpoint name claim required, being authenticated is sufficient
+            // If no specific endpoint name claim required, authenticated access is sufficient
             if (string.IsNullOrWhiteSpace(endpointName))
             {
                 context.Succeed(requirement);
                 return;
             }
 
-            var userRoles = await _userRoleRepo.GetQueryable()
-                .Include(x => x.Role)
-                .ThenInclude(x => x.RoleClaims)
-                .Where(r => r.UserId == userId)
-                .ToListAsync();
+            var normalizedEndpoint = endpointName.Trim().ToLowerInvariant();
 
-            // Super admin has full access
-            if (userRoles.Any(r => r.Role.Key == "super_admin" || r.Role.Name == "super_admin"))
+            // 4. Retrieve cached permissions for user
+            var userPermissions = await _cacheService.GetUserPermissionsAsync(userId, async () =>
+            {
+                var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                var userRoleRepo = _unitOfWork.GetRepository<ApplicationUserRole>();
+                var userClaimRepo = _unitOfWork.GetRepository<ApplicationUserClaim>();
+
+                var userRoles = await userRoleRepo.GetQueryable(
+                    include: q => q.Include(x => x.Role).ThenInclude(r => r.RoleClaims))
+                    .Where(r => r.UserId == userId)
+                    .ToListAsync();
+
+                // Unrestricted access for super admin
+                if (userRoles.Any(r => r.Role.Active && (r.Role.Key == "super_admin" || r.Role.Name == "super_admin" || r.Role.Key == "superadmin")))
+                {
+                    permissions.Add("all");
+                    return permissions;
+                }
+
+                // Add active role claims
+                foreach (var userRole in userRoles)
+                {
+                    if (userRole.Role.Active)
+                    {
+                        foreach (var roleClaim in userRole.Role.RoleClaims)
+                        {
+                            if (roleClaim.Active && !string.IsNullOrWhiteSpace(roleClaim.ClaimValue))
+                            {
+                                permissions.Add(roleClaim.ClaimValue.Trim().ToLowerInvariant());
+                            }
+                        }
+                    }
+                }
+
+                // Add active direct user claims
+                var directClaims = await userClaimRepo.GetByAsync(r => r.UserId == userId && r.Active);
+                foreach (var claim in directClaims)
+                {
+                    if (!string.IsNullOrWhiteSpace(claim.ClaimValue))
+                    {
+                        permissions.Add(claim.ClaimValue.Trim().ToLowerInvariant());
+                    }
+                }
+
+                return permissions;
+            });
+
+            // 5. Check if user possesses required route permission or super admin token
+            if (userPermissions.Contains("all") || userPermissions.Contains(normalizedEndpoint))
             {
                 context.Succeed(requirement);
                 return;
             }
 
-            var userClaims = await _userClaimRepo.GetByAsync(r => r.UserId == userId);
-
-            bool userRoleHasClaim = userRoles.Any(x =>
-                x.Role.Active && x.Role.RoleClaims.Any(r => r.Active && (r.ClaimValue == endpointName || r.ClaimValue == "all")));
-
-            bool userClaimHasClaim = userClaims.Any(x => x.ClaimValue == endpointName || x.ClaimValue == "all");
-
-            if (userRoleHasClaim || userClaimHasClaim)
-            {
-                context.Succeed(requirement);
-                return;
-            }
-
-            // Also check role-based permissions fallback
-            context.Succeed(requirement);
+            // Deny access with 403
+            throw new UnauthorizedAccessException($"User is unauthorized to access '{endpointName}'.");
         }
     }
 }

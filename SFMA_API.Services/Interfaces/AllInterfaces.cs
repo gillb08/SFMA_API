@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Dtos.Request;
+using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Entities;
 using System;
@@ -40,6 +40,29 @@ namespace SFMA_API.Services.Interfaces
     {
         Task<IEnumerable<RoleResponse>> GetAllRoles();
         Task<RoleResponse?> GetRolePermissions(string roleKey);
+        Task<IEnumerable<string>> GetRouteNames();
+        Task<bool> UpdateRoleClaims(UpdateRoleClaimsRequest request);
+        Task<bool> UpdateUserClaims(UpdateUserClaimsRequest request);
+    }
+
+    public interface IRoleClaimService : IRolePermissionService
+    {
+    }
+
+    public interface IMenuService
+    {
+        Task<IEnumerable<MenuResponse>> GetAllMenus();
+        Task<MenuResponse> CreateMenu(CreateMenuRequest request);
+        Task<MenuResponse> UpdateMenu(Guid id, UpdateMenuRequest request);
+        Task<bool> AddClaimsToMenu(AddClaimsToMenuRequest request);
+        Task<IEnumerable<string>> GetMenuItems(IEnumerable<string> claims);
+    }
+
+    public interface IPermissionCacheService
+    {
+        Task<HashSet<string>> GetUserPermissionsAsync(string userId, Func<Task<HashSet<string>>> factory);
+        void InvalidateUserPermissions(string userId);
+        void InvalidateAll();
     }
 
     public interface IStudentService

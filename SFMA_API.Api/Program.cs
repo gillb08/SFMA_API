@@ -145,6 +145,7 @@ builder.Services.AddAutoMapper(cfg =>
 builder.Services.AddTransient(typeof(PagedResponseConfiguration.PagedListToPagedResponseConverter<,>));
 
 // Register Domain Services
+builder.Services.AddMemoryCache();
 builder.Services.RegisterServices();
 builder.Services.AddHttpContextAccessor();
 

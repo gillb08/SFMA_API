@@ -308,4 +308,44 @@ namespace SFMA_API.Models.Dtos.Request
         public Guid StudentId { get; set; }
         public bool Acquired { get; set; }
     }
+
+    public class UpdateRoleClaimsRequest
+    {
+        public string RoleId { get; set; } = string.Empty;
+        public string? RoleKey { get; set; }
+        public List<string> Claims { get; set; } = new List<string>();
+        public bool Active { get; set; } = true;
+    }
+
+    public class UpdateUserClaimsRequest
+    {
+        public string UserId { get; set; } = string.Empty;
+        public List<string> Claims { get; set; } = new List<string>();
+        public bool Active { get; set; } = true;
+    }
+
+    public class CreateMenuRequest
+    {
+        public string Title { get; set; } = string.Empty;
+        public string? Icon { get; set; }
+        public string? Route { get; set; }
+        public int Order { get; set; }
+        public List<string> Claims { get; set; } = new List<string>();
+    }
+
+    public class UpdateMenuRequest
+    {
+        public string Title { get; set; } = string.Empty;
+        public string? Icon { get; set; }
+        public string? Route { get; set; }
+        public int Order { get; set; }
+        public bool Active { get; set; } = true;
+        public List<string> Claims { get; set; } = new List<string>();
+    }
+
+    public class AddClaimsToMenuRequest
+    {
+        public Guid MenuId { get; set; }
+        public List<string> Claims { get; set; } = new List<string>();
+    }
 }

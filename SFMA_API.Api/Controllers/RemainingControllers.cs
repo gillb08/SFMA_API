@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
@@ -13,6 +14,7 @@ using System.Threading.Tasks;
 namespace SFMA_API.Api.Controllers
 {
     [Route("api/v1/requisitions")]
+    [Authorize(Policy = "Authorization")]
     public class RequisitionsController : BaseController
     {
         private readonly IRequisitionService _requisitionService;
@@ -22,8 +24,7 @@ namespace SFMA_API.Api.Controllers
             _requisitionService = requisitionService;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-all-requisitions")]
         [SwaggerOperation(Summary = "Get requisitions with filters")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetRequisitions([FromQuery] RequisitionStatus? status, [FromQuery] string? department, [FromQuery] RequestParameters parameters)
@@ -32,8 +33,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("{id:guid}")]
+        [HttpGet("{id:guid}", Name = "get-requisition-by-id")]
         [SwaggerOperation(Summary = "Get requisition details by ID")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetRequisitionById(Guid id)
@@ -43,8 +43,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin,teacher")]
-        [HttpPost]
+        [HttpPost("", Name = "create-requisition")]
         [SwaggerOperation(Summary = "Create a new requisition")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateRequisition([FromBody] CreateRequisitionRequest request)
@@ -53,8 +52,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
-        [HttpPost("{id:guid}/approve")]
+        [HttpPost("{id:guid}/approve", Name = "approve-requisition")]
         [SwaggerOperation(Summary = "Advance requisition approval stage (AcademicHead -> FinancialHead -> SuperAdmin)")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ApproveRequisition(Guid id, [FromBody] ApproveRequisitionRequest request)
@@ -63,8 +61,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
-        [HttpPost("{id:guid}/query")]
+        [HttpPost("{id:guid}/query", Name = "query-requisition")]
         [SwaggerOperation(Summary = "Query / reject requisition")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> QueryRequisition(Guid id, [FromBody] QueryRequisitionRequest request)
@@ -75,6 +72,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/scheme-of-work")]
+    [Authorize(Policy = "Authorization")]
     public class SchemeOfWorkController : BaseController
     {
         private readonly ISchemeAndTimetableService _service;
@@ -84,8 +82,7 @@ namespace SFMA_API.Api.Controllers
             _service = service;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-scheme-of-work")]
         [SwaggerOperation(Summary = "Get weekly scheme of work curriculum")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetSchemeOfWork([FromQuery] Guid classSectionId, [FromQuery] Guid? termId)
@@ -94,8 +91,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost]
+        [HttpPost("", Name = "create-scheme-of-work")]
         [SwaggerOperation(Summary = "Add scheme of work week")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateSchemeOfWork([FromBody] CreateSchemeOfWorkRequest request)
@@ -104,8 +100,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPut("{id:guid}")]
+        [HttpPut("{id:guid}", Name = "update-scheme-of-work")]
         [SwaggerOperation(Summary = "Update scheme of work entry")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateSchemeOfWork(Guid id, [FromBody] UpdateSchemeOfWorkRequest request)
@@ -114,8 +109,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpPost("{id:guid}/vet")]
+        [HttpPost("{id:guid}/vet", Name = "vet-scheme-of-work")]
         [SwaggerOperation(Summary = "Vet scheme of work entry by Head of School")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> VetSchemeOfWork(Guid id)
@@ -126,6 +120,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/timetable")]
+    [Authorize(Policy = "Authorization")]
     public class TimetableController : BaseController
     {
         private readonly ISchemeAndTimetableService _service;
@@ -135,8 +130,7 @@ namespace SFMA_API.Api.Controllers
             _service = service;
         }
 
-        [Authorize]
-        [HttpGet("{classId:guid}")]
+        [HttpGet("{classId:guid}", Name = "get-timetable")]
         [SwaggerOperation(Summary = "Get class timetable slots")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetTimetable(Guid classId)
@@ -145,8 +139,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpPut("{classId:guid}")]
+        [HttpPut("{classId:guid}", Name = "update-timetable")]
         [SwaggerOperation(Summary = "Update class timetable slots")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateTimetable(Guid classId, [FromBody] UpdateTimetableRequest request)
@@ -157,6 +150,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/lesson-notes")]
+    [Authorize(Policy = "Authorization")]
     public class LessonNotesController : BaseController
     {
         private readonly ILessonNoteAndAssignmentService _service;
@@ -166,8 +160,7 @@ namespace SFMA_API.Api.Controllers
             _service = service;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-all-lesson-notes")]
         [SwaggerOperation(Summary = "Get lesson notes with optional status filter")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetLessonNotes([FromQuery] LessonNoteStatus? status)
@@ -176,8 +169,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost]
+        [HttpPost("", Name = "create-lesson-note")]
         [SwaggerOperation(Summary = "Submit lesson note for review")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateLessonNote([FromBody] CreateLessonNoteRequest request)
@@ -186,8 +178,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpPost("{id:guid}/review")]
+        [HttpPost("{id:guid}/review", Name = "review-lesson-note")]
         [SwaggerOperation(Summary = "Review/Approve/Request revision on lesson note")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ReviewLessonNote(Guid id, [FromBody] ReviewLessonNoteRequest request)
@@ -198,6 +189,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/assignments")]
+    [Authorize(Policy = "Authorization")]
     public class AssignmentsController : BaseController
     {
         private readonly ILessonNoteAndAssignmentService _service;
@@ -207,8 +199,7 @@ namespace SFMA_API.Api.Controllers
             _service = service;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-assignments")]
         [SwaggerOperation(Summary = "Get assignments for class")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAssignments([FromQuery] Guid classSectionId)
@@ -217,8 +208,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost]
+        [HttpPost("", Name = "create-assignment")]
         [SwaggerOperation(Summary = "Create a homework or project assignment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateAssignment([FromBody] CreateAssignmentRequest request)
@@ -227,8 +217,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPut("{id:guid}")]
+        [HttpPut("{id:guid}", Name = "update-assignment")]
         [SwaggerOperation(Summary = "Update assignment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateAssignment(Guid id, [FromBody] UpdateAssignmentRequest request)
@@ -237,8 +226,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("{id:guid}/submissions")]
+        [HttpGet("{id:guid}/submissions", Name = "get-assignment-submissions")]
         [SwaggerOperation(Summary = "Get student submissions for assignment")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAssignmentSubmissions(Guid id)
@@ -247,8 +235,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,student")]
-        [HttpPost("{id:guid}/submit")]
+        [HttpPost("{id:guid}/submit", Name = "submit-assignment")]
         [SwaggerOperation(Summary = "Submit assignment response")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> SubmitAssignment(Guid id, [FromBody] SubmitAssignmentRequest request)
@@ -259,6 +246,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/inquiries")]
+    [Authorize(Policy = "Authorization")]
     public class InquiriesController : BaseController
     {
         private readonly IInquiryAndRequirementService _service;
@@ -268,8 +256,7 @@ namespace SFMA_API.Api.Controllers
             _service = service;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-inquiries")]
         [SwaggerOperation(Summary = "Get helpdesk inquiries")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetInquiries([FromQuery] InquiryStatus? status, [FromQuery] RequestParameters parameters)
@@ -278,8 +265,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("{id:guid}")]
+        [HttpGet("{id:guid}", Name = "get-inquiry-by-id")]
         [SwaggerOperation(Summary = "Get inquiry thread by ID")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetInquiryById(Guid id)
@@ -289,8 +275,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpPost]
+        [HttpPost("", Name = "create-inquiry")]
         [SwaggerOperation(Summary = "Create an inquiry or support request")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateInquiry([FromBody] CreateInquiryRequest request)
@@ -299,8 +284,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpPost("{id:guid}/messages")]
+        [HttpPost("{id:guid}/messages", Name = "add-inquiry-message")]
         [SwaggerOperation(Summary = "Post message to inquiry thread")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> AddInquiryMessage(Guid id, [FromBody] AddInquiryMessageRequest request)
@@ -309,8 +293,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
-        [HttpPatch("{id:guid}/status")]
+        [HttpPatch("{id:guid}/status", Name = "update-inquiry-status")]
         [SwaggerOperation(Summary = "Update inquiry status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateInquiryStatus(Guid id, [FromBody] UpdateInquiryStatusRequest request)
@@ -321,6 +304,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/requirements")]
+    [Authorize(Policy = "Authorization")]
     public class RequirementsController : BaseController
     {
         private readonly IInquiryAndRequirementService _service;
@@ -330,8 +314,7 @@ namespace SFMA_API.Api.Controllers
             _service = service;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-school-requirements")]
         [SwaggerOperation(Summary = "Get student school requirements and textbook list")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetSchoolRequirements([FromQuery] Guid classSectionId, [FromQuery] Guid? termId, [FromQuery] Guid? studentId)
@@ -340,8 +323,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,teacher")]
-        [HttpPost("{id:guid}/status")]
+        [HttpPost("{id:guid}/status", Name = "toggle-requirement-status")]
         [SwaggerOperation(Summary = "Toggle acquired status of requirement item for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ToggleRequirementStatus(Guid id, [FromBody] ToggleRequirementStatusRequest request)
@@ -350,8 +332,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("export-pdf")]
+        [HttpGet("export-pdf", Name = "export-requirements-pdf")]
         [SwaggerOperation(Summary = "Export requirements list as PDF base64")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ExportRequirementsPdf([FromQuery] Guid classSectionId)
@@ -362,6 +343,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/dashboard")]
+    [Authorize(Policy = "Authorization")]
     public class DashboardController : BaseController
     {
         private readonly IDashboardService _dashboardService;
@@ -371,8 +353,7 @@ namespace SFMA_API.Api.Controllers
             _dashboardService = dashboardService;
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head,financial_admin")]
-        [HttpGet("executive")]
+        [HttpGet("executive", Name = "get-executive-dashboard")]
         [SwaggerOperation(Summary = "Get executive dashboard KPIs")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetExecutiveDashboard()
@@ -381,8 +362,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpGet("academic-snapshot")]
+        [HttpGet("academic-snapshot", Name = "get-academic-snapshot")]
         [SwaggerOperation(Summary = "Get academic snapshot and terminal performance indicators")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAcademicSnapshot()
@@ -391,8 +371,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,financial_admin")]
-        [HttpGet("budget-progress")]
+        [HttpGet("budget-progress", Name = "get-budget-progress")]
         [SwaggerOperation(Summary = "Get departmental budget vs actual progress")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetBudgetProgress()
@@ -401,8 +380,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,financial_admin")]
-        [HttpGet("financial")]
+        [HttpGet("financial", Name = "get-financial-dashboard")]
         [SwaggerOperation(Summary = "Get financial performance dashboard")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetFinancialDashboard()

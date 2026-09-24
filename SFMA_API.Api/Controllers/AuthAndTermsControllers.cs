@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
@@ -21,7 +22,7 @@ namespace SFMA_API.Api.Controllers
             _authService = authService;
         }
 
-        [HttpPost("login")]
+        [HttpPost("login", Name = "login")]
         [SwaggerOperation(Summary = "Login user with username/email and password")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -30,8 +31,8 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpPost("logout")]
+        [Authorize(Policy = "Authorization")]
+        [HttpPost("logout", Name = "logout")]
         [SwaggerOperation(Summary = "Logout current user")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> Logout()
@@ -42,8 +43,8 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("me")]
+        [Authorize(Policy = "Authorization")]
+        [HttpGet("me", Name = "get-current-user-profile")]
         [SwaggerOperation(Summary = "Get current logged-in user profile")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> Me()
@@ -54,8 +55,8 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpPost("change-password")]
+        [Authorize(Policy = "Authorization")]
+        [HttpPost("change-password", Name = "change-password")]
         [SwaggerOperation(Summary = "Change user password")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
@@ -66,7 +67,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [HttpPost("reset-password")]
+        [HttpPost("reset-password", Name = "reset-password")]
         [SwaggerOperation(Summary = "Reset user password via token")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
@@ -75,7 +76,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [HttpPost("refresh-token")]
+        [HttpPost("refresh-token", Name = "refresh-token")]
         [SwaggerOperation(Summary = "Refresh expired access token using refresh token")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshAccessTokenRequest request)
@@ -86,6 +87,7 @@ namespace SFMA_API.Api.Controllers
     }
 
     [Route("api/v1/terms")]
+    [Authorize(Policy = "Authorization")]
     public class TermsController : BaseController
     {
         private readonly ITermService _termService;
@@ -95,8 +97,7 @@ namespace SFMA_API.Api.Controllers
             _termService = termService;
         }
 
-        [Authorize]
-        [HttpGet]
+        [HttpGet("", Name = "get-all-terms")]
         [SwaggerOperation(Summary = "Get all academic terms")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllTerms()
@@ -105,8 +106,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize]
-        [HttpGet("active")]
+        [HttpGet("active", Name = "get-active-term")]
         [SwaggerOperation(Summary = "Get currently active academic term")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetActiveTerm()
@@ -116,8 +116,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin")]
-        [HttpPut("{id:guid}")]
+        [HttpPut("{id:guid}", Name = "update-term")]
         [SwaggerOperation(Summary = "Update term dates and status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateTerm(Guid id, [FromBody] UpdateTermRequest request)
@@ -126,8 +125,7 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
-        [Authorize(Roles = "super_admin,academic_admin,academic_head")]
-        [HttpPost("{id:guid}/deadlines")]
+        [HttpPost("{id:guid}/deadlines", Name = "configure-deadlines")]
         [SwaggerOperation(Summary = "Configure assessment and gradebook submission deadlines")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ConfigureDeadlines(Guid id, [FromBody] ConfigureDeadlinesRequest request)

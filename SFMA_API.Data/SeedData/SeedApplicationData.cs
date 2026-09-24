@@ -7,8 +7,10 @@ using SFMA_API.Data.Context;
 using SFMA_API.Models.Entities;
 using SFMA_API.Models.Enums;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace SFMA_API.Data.SeedData
@@ -33,33 +35,36 @@ namespace SFMA_API.Data.SeedData
             var roleManager = serviceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
             var seed = serviceProvider.GetService<Seed>() ?? new Seed();
 
-            // Seed Roles
+            // 1. Seed Roles & Role Claims
             foreach (string roleKey in seed.Roles)
             {
-                if (!await roleManager.RoleExistsAsync(roleKey))
+                var role = await roleManager.FindByNameAsync(roleKey);
+                if (role == null)
                 {
-                    var role = new ApplicationRole(roleKey)
+                    role = new ApplicationRole(roleKey)
                     {
                         DisplayName = roleKey.Replace("_", " ").ToUpperInvariant()
                     };
                     await roleManager.CreateAsync(role);
+                }
 
-                    if (roleKey == "super_admin")
+                if (seed.DefaultRoleClaims.TryGetValue(roleKey, out var claims))
+                {
+                    var existingClaims = await roleManager.GetClaimsAsync(role);
+                    var existingClaimValues = existingClaims.Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (string claimValue in claims)
                     {
-                        var createdRole = await roleManager.FindByNameAsync(roleKey);
-                        if (createdRole != null)
+                        if (!existingClaimValues.Contains(claimValue))
                         {
-                            foreach (string claimValue in seed.SuperAdminClaims)
-                            {
-                                await roleManager.AddClaimAsync(createdRole, new Claim("Permission", claimValue));
-                                await roleManager.AddClaimAsync(createdRole, new Claim(ClaimTypes.Name, claimValue));
-                            }
+                            await roleManager.AddClaimAsync(role, new Claim("permission", claimValue));
+                            await roleManager.AddClaimAsync(role, new Claim(ClaimTypes.Name, claimValue));
                         }
                     }
                 }
             }
 
-            // Seed Super Admin User
+            // 2. Seed Super Admin User
             var existingAdmin = await userManager.FindByEmailAsync(seed.AdminUser.Email);
             if (existingAdmin == null)
             {
@@ -80,7 +85,128 @@ namespace SFMA_API.Data.SeedData
                 }
             }
 
-            // Seed default academic term if none exists
+            // 3. Seed default Menus if none exist
+            if (!await context.Menus.AnyAsync())
+            {
+                var defaultMenus = new List<Menu>
+                {
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Dashboard",
+                        Icon = "dashboard",
+                        Route = "/dashboard",
+                        Order = 1,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-executive-dashboard", "get-academic-snapshot", "get-financial-dashboard", "get-budget-progress" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Staff Management",
+                        Icon = "people",
+                        Route = "/staff",
+                        Order = 2,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-all-staff", "get-staff-by-id", "create-staff", "update-staff" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Student Management",
+                        Icon = "school",
+                        Route = "/students",
+                        Order = 3,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-all-students", "get-student-by-id", "admit-student", "update-student-biodata" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Attendance",
+                        Icon = "fact_check",
+                        Route = "/attendance",
+                        Order = 4,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-daily-attendance", "get-student-monthly-attendance", "batch-mark-attendance" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Assessments & Results",
+                        Icon = "grade",
+                        Route = "/assessments",
+                        Order = 5,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-assessment-broadsheet", "batch-update-scores", "submit-broadsheet", "get-student-results" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Fee Management",
+                        Icon = "payments",
+                        Route = "/fees",
+                        Order = 6,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "post-fee-teller", "get-student-receipts" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Requisitions & Budget",
+                        Icon = "request_quote",
+                        Route = "/requisitions",
+                        Order = 7,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-all-requisitions", "get-requisition-by-id", "create-requisition", "approve-requisition" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Curriculum & Timetable",
+                        Icon = "menu_book",
+                        Route = "/academics",
+                        Order = 8,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-scheme-of-work", "get-timetable", "get-all-lesson-notes" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Assignments",
+                        Icon = "assignment",
+                        Route = "/assignments",
+                        Order = 9,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-assignments", "create-assignment", "get-assignment-submissions", "submit-assignment" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Helpdesk & Inquiries",
+                        Icon = "support_agent",
+                        Route = "/inquiries",
+                        Order = 10,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-inquiries", "get-inquiry-by-id", "create-inquiry", "add-inquiry-message" })
+                    },
+                    new Menu
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "Role & Permissions",
+                        Icon = "admin_panel_settings",
+                        Route = "/roles",
+                        Order = 11,
+                        Active = true,
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-all-roles", "get-all-permissions", "get-all-role-claims", "update-role-claims", "get-all-menus" })
+                    }
+                };
+
+                await context.Menus.AddRangeAsync(defaultMenus);
+                await context.SaveChangesAsync();
+            }
+
+            // 4. Seed default academic term if none exists
             if (!await context.AcademicTerms.AnyAsync())
             {
                 var defaultTerm = new AcademicTerm
@@ -99,7 +225,7 @@ namespace SFMA_API.Data.SeedData
                 await context.SaveChangesAsync();
             }
 
-            // Seed default bank account if none exists
+            // 5. Seed default bank account if none exists
             if (!await context.BankAccounts.AnyAsync())
             {
                 var defaultAccount = new BankAccount
@@ -115,7 +241,7 @@ namespace SFMA_API.Data.SeedData
                 await context.SaveChangesAsync();
             }
 
-            // Seed default Class Sections if none exist
+            // 6. Seed default Class Sections if none exist
             if (!await context.ClassSections.AnyAsync())
             {
                 var activeTerm = await context.AcademicTerms.FirstOrDefaultAsync(t => t.IsActive) 

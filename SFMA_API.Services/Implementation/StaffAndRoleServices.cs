@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SFMA_API.Data.Interfaces;
@@ -221,30 +221,6 @@ namespace SFMA_API.Services.Implementation
             }
 
             return newPassword;
-        }
-    }
-
-    public class RolePermissionService : IRolePermissionService
-    {
-        private readonly RoleManager<ApplicationRole> _roleManager;
-        private readonly IMapper _mapper;
-
-        public RolePermissionService(RoleManager<ApplicationRole> roleManager, IMapper mapper)
-        {
-            _roleManager = roleManager;
-            _mapper = mapper;
-        }
-
-        public async Task<IEnumerable<RoleResponse>> GetAllRoles()
-        {
-            var roles = await _roleManager.Roles.ToListAsync();
-            return _mapper.Map<IEnumerable<RoleResponse>>(roles);
-        }
-
-        public async Task<RoleResponse?> GetRolePermissions(string roleKey)
-        {
-            var role = await _roleManager.FindByNameAsync(roleKey) ?? await _roleManager.Roles.FirstOrDefaultAsync(r => r.Key == roleKey);
-            return role != null ? _mapper.Map<RoleResponse>(role) : null;
         }
     }
 }
