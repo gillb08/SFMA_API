@@ -172,6 +172,15 @@ namespace SFMA_API.Services.Implementation
             string primaryRole = roles.FirstOrDefault()
                 ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
+            string? address = null;
+            string? phone = user.PhoneNumber;
+            var parent = await _unitOfWork.GetRepository<Parent>().GetSingleByAsync(p => p.UserId == userId);
+            if (parent != null)
+            {
+                address = parent.Address;
+                phone = string.IsNullOrWhiteSpace(phone) ? parent.Phone : phone;
+            }
+
             return new UserProfileResponse
             {
                 Id = user.Id,
@@ -179,8 +188,57 @@ namespace SFMA_API.Services.Implementation
                 DisplayName = user.DisplayName,
                 Role = primaryRole,
                 AvatarUrl = user.AvatarUrl,
+                PhoneNumber = phone,
+                Address = address,
                 PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole)
             };
+        }
+
+        public async Task<UserProfileResponse> UpdateUserProfile(string userId, UpdateUserProfileRequest request)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                throw new KeyNotFoundException("User not found");
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.DisplayName))
+            {
+                user.DisplayName = request.DisplayName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
+            {
+                user.PhoneNumber = request.PhoneNumber.Trim();
+            }
+
+            await _userManager.UpdateAsync(user);
+
+            var parentRepo = _unitOfWork.GetRepository<Parent>();
+            var parent = await parentRepo.GetSingleByAsync(p => p.UserId == userId);
+            if (parent != null)
+            {
+                if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
+                    parent.Phone = request.PhoneNumber.Trim();
+                if (!string.IsNullOrWhiteSpace(request.Address))
+                    parent.Address = request.Address.Trim();
+                if (!string.IsNullOrWhiteSpace(request.DisplayName))
+                    parent.FullName = request.DisplayName.Trim();
+                await parentRepo.UpdateAsync(parent);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            var staffRepo = _unitOfWork.GetRepository<Staff>();
+            var staff = await staffRepo.GetSingleByAsync(s => s.UserId == userId);
+            if (staff != null)
+            {
+                if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
+                    staff.Phone = request.PhoneNumber.Trim();
+                await staffRepo.UpdateAsync(staff);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            return await GetCurrentUserProfile(userId);
         }
 
         public async Task<bool> ChangePassword(string userId, ChangePasswordRequest request)

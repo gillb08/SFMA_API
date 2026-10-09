@@ -11,6 +11,8 @@ namespace SFMA_API.Models.Dtos.Response
         public string DisplayName { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public string? AvatarUrl { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Address { get; set; }
         public string PortalRedirect { get; set; } = string.Empty;
     }
 

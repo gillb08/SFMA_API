@@ -348,4 +348,16 @@ namespace SFMA_API.Models.Dtos.Request
         public Guid MenuId { get; set; }
         public List<string> Claims { get; set; } = new List<string>();
     }
+
+    public class GradeAssignmentSubmissionRequest
+    {
+        public string Grade { get; set; } = string.Empty;
+    }
+
+    public class UpdateUserProfileRequest
+    {
+        public string? DisplayName { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Address { get; set; }
+    }
 }

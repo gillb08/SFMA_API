@@ -481,5 +481,738 @@ If you did not request this reset, notify the school administration immediately.
                 _logger.LogError(ex, "Non-blocking error during staff password reset notification for {StaffEmail}", staffEmail);
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Shared HTML shell builder — DRYs the branded email boilerplate
+        // ═══════════════════════════════════════════════════════════════════
+        private string BuildEmailShell(string headerSubtitle, string innerContentHtml)
+        {
+            string loginUrl = _emailOptions.PortalLoginUrl;
+            return $@"
+<!DOCTYPE html>
+<html lang=""en"">
+<head>
+  <meta charset=""UTF-8"" />
+  <meta name=""viewport"" content=""width=device-width, initial-scale=1.0""/>
+  <style>
+    body {{ margin: 0; padding: 0; background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1E293B; }}
+    .wrapper {{ width: 100%; max-width: 600px; margin: 24px auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid #E2E8F0; }}
+    .header {{ background: linear-gradient(135deg, #0030C2 0%, #1A44D8 60%, #FEAE2C 100%); padding: 32px 24px; text-align: center; color: #FFFFFF; }}
+    .header h1 {{ margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }}
+    .header p {{ margin: 6px 0 0 0; font-size: 12px; color: #E0E7FF; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }}
+    .content {{ padding: 32px 24px; }}
+    .salutation {{ font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 12px; }}
+    .intro {{ font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px; }}
+    .card {{ background-color: #F1F5F9; border-radius: 12px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #0030C2; }}
+    .card h3 {{ margin: 0 0 12px 0; font-size: 14px; color: #0030C2; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .credential-label {{ color: #64748B; font-weight: 600; font-size: 13px; }}
+    .credential-value {{ color: #0F172A; font-weight: 700; font-family: Courier, monospace; background: #FFFFFF; padding: 2px 8px; border-radius: 4px; border: 1px solid #CBD5E1; font-size: 13px; }}
+    .cta-container {{ text-align: center; margin: 28px 0; }}
+    .btn {{ display: inline-block; background-color: #0030C2; color: #FFFFFF !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(0, 48, 194, 0.25); }}
+    .alert-card {{ background-color: #FEF2F2; border-radius: 12px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #DC2626; }}
+    .alert-card h3 {{ margin: 0 0 12px 0; font-size: 14px; color: #DC2626; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .success-card {{ background-color: #F0FDF4; border-radius: 12px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #16A34A; }}
+    .success-card h3 {{ margin: 0 0 12px 0; font-size: 14px; color: #16A34A; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .warning-card {{ background-color: #FFFBEB; border-radius: 12px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #F59E0B; }}
+    .warning-card h3 {{ margin: 0 0 12px 0; font-size: 14px; color: #D97706; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .footer {{ background-color: #0F172A; color: #94A3B8; text-align: center; padding: 24px; font-size: 12px; line-height: 1.5; }}
+    .footer a {{ color: #FEAE2C; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  <div class=""wrapper"">
+    <div class=""header"">
+      <h1>ST. FAITH MODEL ACADEMY</h1>
+      <p>{headerSubtitle}</p>
+    </div>
+    <div class=""content"">
+      {innerContentHtml}
+    </div>
+    <div class=""footer"">
+      &copy; {DateTime.UtcNow.Year} St. Faith Model Academy. All Rights Reserved.<br/>
+      Portal: <a href=""{loginUrl}"">{loginUrl}</a> | Helpdesk: <a href=""mailto:{_emailOptions.ReplyToEmail}"">{_emailOptions.ReplyToEmail}</a>
+    </div>
+  </div>
+</body>
+</html>";
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature A — Bulk Fee Payment Reminder
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendFeePaymentReminderAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            decimal amountDue,
+            string termLabel)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"Outstanding Fee Balance Reminder — {studentName} ({studentCode})";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {guardianName},</div>
+      <div class=""intro"">
+        This is a courteous reminder that there is an outstanding fee balance for <strong>{studentName}</strong> ({studentCode}) for <strong>{termLabel}</strong>.
+        Please arrange payment at your earliest convenience.
+      </div>
+      <div class=""warning-card"">
+        <h3>Outstanding Fee Summary</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Scholar Name:</td><td class=""credential-value""><strong>{studentName}</strong></td></tr>
+          <tr><td class=""credential-label"">Student Code:</td><td class=""credential-value"">{studentCode}</td></tr>
+          <tr><td class=""credential-label"">Academic Term:</td><td class=""credential-value"">{termLabel}</td></tr>
+          <tr><td class=""credential-label"">Amount Due:</td><td class=""credential-value"" style=""color: #DC2626; font-size: 16px;"">&#8358;{amountDue:N2}</td></tr>
+        </table>
+      </div>
+      <p style=""font-size: 13px; color: #475569; line-height: 1.6;"">
+        You may view your full fee statement and designated bank account details by logging into the parent portal.
+      </p>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">View Fee Statement</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Fee Payment Reminder", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - FEE PAYMENT REMINDER
+
+Dear {guardianName},
+
+Outstanding fee balance for {studentName} ({studentCode}):
+Term: {termLabel}
+Amount Due: N{amountDue:N2}
+
+Please log in to view your statement and school bank accounts: {loginUrl}
+
+Bursary Department, St. Faith Model Academy
+Helpdesk: {_emailOptions.ReplyToEmail}
+";
+
+                if (!string.IsNullOrWhiteSpace(guardianEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = guardianEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(guardianPhone))
+                {
+                    string smsText = $"SFMA Fee Reminder: N{amountDue:N0} outstanding for {studentName} ({studentCode}), {termLabel}. Pay via school bank accounts. Portal: {loginUrl}";
+                    await _smsSender.SendSmsAsync(new SmsMessage
+                    {
+                        PhoneNumber = guardianPhone,
+                        Message = smsText
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during fee payment reminder for {StudentCode}", studentCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature B — Payment Verification Confirmation
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendPaymentVerificationConfirmationAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            decimal amountPaid,
+            string receiptCode,
+            string paymentMethod,
+            string status)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                bool isRejected = status.Equals("Rejected", StringComparison.OrdinalIgnoreCase);
+                string emailSubject = isRejected
+                    ? $"Fee Payment Rejected — {studentName} ({studentCode})"
+                    : $"Fee Payment {status} — {studentName} ({receiptCode})";
+
+                string cardClass = isRejected ? "alert-card" : "success-card";
+                string cardTitle = isRejected ? "Payment Rejected" : "Payment Confirmed";
+                string receiptRow = !string.IsNullOrWhiteSpace(receiptCode) && !isRejected
+                    ? $@"<tr><td class=""credential-label"">Receipt Code:</td><td class=""credential-value"">{receiptCode}</td></tr>" : "";
+
+                string statusMessage = isRejected
+                    ? "Your submitted bank teller has been <strong>rejected</strong> by the Bursary department. Please contact the school for clarification or resubmit with the correct details."
+                    : $"Your fee payment for <strong>{studentName}</strong> has been <strong>{status.ToLower()}</strong>. Your balance has been updated accordingly.";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {guardianName},</div>
+      <div class=""intro"">{statusMessage}</div>
+      <div class=""{cardClass}"">
+        <h3>{cardTitle}</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Scholar:</td><td class=""credential-value""><strong>{studentName}</strong> ({studentCode})</td></tr>
+          <tr><td class=""credential-label"">Amount:</td><td class=""credential-value"">&#8358;{amountPaid:N2}</td></tr>
+          <tr><td class=""credential-label"">Payment Method:</td><td class=""credential-value"">{paymentMethod}</td></tr>
+          <tr><td class=""credential-label"">Status:</td><td class=""credential-value""><strong>{status.ToUpperInvariant()}</strong></td></tr>
+          {receiptRow}
+        </table>
+      </div>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">View Fee Statement</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Payment Notification", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - PAYMENT {status.ToUpperInvariant()}
+
+Dear {guardianName},
+
+Payment update for {studentName} ({studentCode}):
+Amount: N{amountPaid:N2}
+Method: {paymentMethod}
+Status: {status}
+{(string.IsNullOrWhiteSpace(receiptCode) ? "" : $"Receipt: {receiptCode}")}
+
+View your fee statement: {loginUrl}
+
+Bursary Department, St. Faith Model Academy
+";
+
+                if (!string.IsNullOrWhiteSpace(guardianEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = guardianEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(guardianPhone))
+                {
+                    string smsText = isRejected
+                        ? $"SFMA: Payment of N{amountPaid:N0} for {studentName} was REJECTED. Please contact the Bursary. Portal: {loginUrl}"
+                        : $"SFMA: Payment of N{amountPaid:N0} for {studentName} {status}. Receipt: {receiptCode}. Portal: {loginUrl}";
+                    await _smsSender.SendSmsAsync(new SmsMessage
+                    {
+                        PhoneNumber = guardianPhone,
+                        Message = smsText
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during payment verification confirmation for {StudentCode}", studentCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature C — Inquiry Ticket Created Alert (to routed staff)
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendInquiryCreatedAlertAsync(
+            string staffName,
+            string staffEmail,
+            string inquiryCode,
+            string category,
+            string subjectLine,
+            string parentName,
+            string studentName)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"New Helpdesk Inquiry Assigned — {inquiryCode}";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Hello {staffName},</div>
+      <div class=""intro"">
+        A new helpdesk inquiry has been submitted and routed to you for action.
+      </div>
+      <div class=""card"">
+        <h3>Inquiry Details</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Inquiry Code:</td><td class=""credential-value"">{inquiryCode}</td></tr>
+          <tr><td class=""credential-label"">Category:</td><td class=""credential-value"">{category}</td></tr>
+          <tr><td class=""credential-label"">Subject:</td><td class=""credential-value"">{subjectLine}</td></tr>
+          <tr><td class=""credential-label"">Parent:</td><td class=""credential-value"">{parentName}</td></tr>
+          <tr><td class=""credential-label"">Scholar:</td><td class=""credential-value"">{studentName}</td></tr>
+        </table>
+      </div>
+      <p style=""font-size: 13px; color: #475569;"">Please respond to this inquiry promptly via the staff portal.</p>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">Open Helpdesk Portal</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Helpdesk Notification", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - NEW INQUIRY ASSIGNED
+
+Hello {staffName},
+
+A new helpdesk inquiry has been routed to you:
+Code: {inquiryCode}
+Category: {category}
+Subject: {subjectLine}
+Parent: {parentName}
+Scholar: {studentName}
+
+Please respond via the portal: {loginUrl}
+";
+
+                if (!string.IsNullOrWhiteSpace(staffEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = staffEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during inquiry created alert for {InquiryCode}", inquiryCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature D-1 — Inquiry Reply Alert
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendInquiryReplyAlertAsync(
+            string recipientName,
+            string recipientEmail,
+            string inquiryCode,
+            string subjectLine,
+            string senderName,
+            string messagePreview)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"New Reply on Inquiry {inquiryCode} — {subjectLine}";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {recipientName},</div>
+      <div class=""intro"">
+        <strong>{senderName}</strong> has posted a new message on inquiry <strong>{inquiryCode}</strong>.
+      </div>
+      <div class=""card"" style=""border-left-color: #FEAE2C;"">
+        <h3 style=""color: #D97706;"">Message Preview</h3>
+        <p style=""font-size: 14px; color: #1E293B; line-height: 1.6; font-style: italic;"">""{messagePreview}""</p>
+      </div>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">View Full Conversation</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Inquiry Update", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - INQUIRY REPLY
+
+Dear {recipientName},
+
+{senderName} replied on inquiry {inquiryCode}:
+""{messagePreview}""
+
+View the full conversation: {loginUrl}
+";
+
+                if (!string.IsNullOrWhiteSpace(recipientEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = recipientEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during inquiry reply alert for {InquiryCode}", inquiryCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature D-2 — Inquiry Status Changed Alert (to parent)
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendInquiryStatusChangedAlertAsync(
+            string parentName,
+            string parentEmail,
+            string inquiryCode,
+            string subjectLine,
+            string newStatus)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"Inquiry {inquiryCode} Status Updated — {newStatus}";
+
+                string cardClass = newStatus.Equals("resolved", StringComparison.OrdinalIgnoreCase) || newStatus.Equals("closed", StringComparison.OrdinalIgnoreCase)
+                    ? "success-card" : "card";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {parentName},</div>
+      <div class=""intro"">
+        The status of your helpdesk inquiry has been updated.
+      </div>
+      <div class=""{cardClass}"">
+        <h3>Inquiry Status Update</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Inquiry Code:</td><td class=""credential-value"">{inquiryCode}</td></tr>
+          <tr><td class=""credential-label"">Subject:</td><td class=""credential-value"">{subjectLine}</td></tr>
+          <tr><td class=""credential-label"">New Status:</td><td class=""credential-value""><strong>{newStatus.ToUpperInvariant()}</strong></td></tr>
+        </table>
+      </div>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">View Inquiry Details</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Inquiry Update", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - INQUIRY STATUS UPDATE
+
+Dear {parentName},
+
+Inquiry {inquiryCode} (""{subjectLine}"") status changed to: {newStatus.ToUpperInvariant()}
+
+View details: {loginUrl}
+";
+
+                if (!string.IsNullOrWhiteSpace(parentEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = parentEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during inquiry status change alert for {InquiryCode}", inquiryCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature E — Absence Notice Alert (to homeroom teacher)
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendAbsenceNoticeAlertAsync(
+            string teacherName,
+            string teacherEmail,
+            string studentName,
+            string studentCode,
+            string className,
+            DateTime absenceDate,
+            string reason)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"Absence Notice — {studentName} ({studentCode}) on {absenceDate:dd MMM yyyy}";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {teacherName},</div>
+      <div class=""intro"">
+        A parent has submitted an absence notice for one of your students. Please review and update the attendance register accordingly.
+      </div>
+      <div class=""warning-card"">
+        <h3>Absence Notification</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Scholar:</td><td class=""credential-value""><strong>{studentName}</strong></td></tr>
+          <tr><td class=""credential-label"">Student Code:</td><td class=""credential-value"">{studentCode}</td></tr>
+          <tr><td class=""credential-label"">Class:</td><td class=""credential-value"">{className}</td></tr>
+          <tr><td class=""credential-label"">Date of Absence:</td><td class=""credential-value"">{absenceDate:dddd, dd MMMM yyyy}</td></tr>
+          <tr><td class=""credential-label"">Reason:</td><td class=""credential-value"">{reason}</td></tr>
+        </table>
+      </div>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">Open Attendance Register</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Attendance Alert", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - ABSENCE NOTICE
+
+Dear {teacherName},
+
+Absence notice received:
+Scholar: {studentName} ({studentCode})
+Class: {className}
+Date: {absenceDate:dd MMM yyyy}
+Reason: {reason}
+
+Please update the attendance register: {loginUrl}
+";
+
+                if (!string.IsNullOrWhiteSpace(teacherEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = teacherEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during absence notice alert for {StudentCode} on {Date}", studentCode, absenceDate);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature F — Results Published Alert (to parents)
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendResultsPublishedAlertAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            string className,
+            string termLabel,
+            string subject)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"Terminal Results Published — {studentName} ({studentCode}) | {subject}";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {guardianName},</div>
+      <div class=""intro"">
+        We are pleased to inform you that the terminal assessment results for <strong>{studentName}</strong> have been approved and published for the subject <strong>{subject}</strong>.
+      </div>
+      <div class=""success-card"">
+        <h3>Results Available</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Scholar:</td><td class=""credential-value""><strong>{studentName}</strong></td></tr>
+          <tr><td class=""credential-label"">Student Code:</td><td class=""credential-value"">{studentCode}</td></tr>
+          <tr><td class=""credential-label"">Class:</td><td class=""credential-value"">{className}</td></tr>
+          <tr><td class=""credential-label"">Term:</td><td class=""credential-value"">{termLabel}</td></tr>
+          <tr><td class=""credential-label"">Subject:</td><td class=""credential-value"">{subject}</td></tr>
+        </table>
+      </div>
+      <p style=""font-size: 13px; color: #475569; line-height: 1.6;"">
+        Log in to the parent portal to view the full result broadsheet and download the report card.
+      </p>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">View Results</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Academic Results Notification", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - RESULTS PUBLISHED
+
+Dear {guardianName},
+
+Terminal assessment results are now available:
+Scholar: {studentName} ({studentCode})
+Class: {className}
+Term: {termLabel}
+Subject: {subject}
+
+View results and download report: {loginUrl}
+
+Academic Department, St. Faith Model Academy
+";
+
+                if (!string.IsNullOrWhiteSpace(guardianEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = guardianEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(guardianPhone))
+                {
+                    string smsText = $"SFMA: {subject} results for {studentName} ({studentCode}) are now published for {termLabel}. View at {loginUrl}";
+                    await _smsSender.SendSmsAsync(new SmsMessage
+                    {
+                        PhoneNumber = guardianPhone,
+                        Message = smsText
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during results published alert for {StudentCode}", studentCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature G — Requisition Status Update (to requesting staff)
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendRequisitionStatusUpdateAsync(
+            string staffName,
+            string staffEmail,
+            string requisitionCode,
+            string title,
+            string newStatus,
+            string actedByName,
+            string actedByRole,
+            string? notes)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"Requisition {requisitionCode} — {newStatus}";
+
+                bool isPositive = newStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase) ||
+                                  newStatus.Equals("Disbursed", StringComparison.OrdinalIgnoreCase);
+                bool isQueried = newStatus.Equals("Queried", StringComparison.OrdinalIgnoreCase);
+                string cardClass = isPositive ? "success-card" : (isQueried ? "warning-card" : "alert-card");
+
+                string notesRow = !string.IsNullOrWhiteSpace(notes)
+                    ? $@"<tr><td class=""credential-label"">Notes / Reason:</td><td class=""credential-value"">{notes}</td></tr>" : "";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {staffName},</div>
+      <div class=""intro"">
+        Your expenditure requisition has received an update from the approval chain.
+      </div>
+      <div class=""{cardClass}"">
+        <h3>Requisition Update — {newStatus.ToUpperInvariant()}</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Requisition Code:</td><td class=""credential-value"">{requisitionCode}</td></tr>
+          <tr><td class=""credential-label"">Title:</td><td class=""credential-value"">{title}</td></tr>
+          <tr><td class=""credential-label"">Status:</td><td class=""credential-value""><strong>{newStatus.ToUpperInvariant()}</strong></td></tr>
+          <tr><td class=""credential-label"">Acted By:</td><td class=""credential-value"">{actedByName} ({actedByRole})</td></tr>
+          {notesRow}
+        </table>
+      </div>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">View Requisition Details</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Expenditure Requisition Update", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - REQUISITION UPDATE
+
+Dear {staffName},
+
+Requisition {requisitionCode} (""{title}"") status: {newStatus.ToUpperInvariant()}
+Acted by: {actedByName} ({actedByRole})
+{(string.IsNullOrWhiteSpace(notes) ? "" : $"Notes: {notes}")}
+
+View details: {loginUrl}
+";
+
+                if (!string.IsNullOrWhiteSpace(staffEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = staffEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during requisition status update notification for {RequisitionCode}", requisitionCode);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Feature H — Lesson Note Review Feedback (to teacher)
+        // ═══════════════════════════════════════════════════════════════════
+        public async Task SendLessonNoteReviewFeedbackAsync(
+            string teacherName,
+            string teacherEmail,
+            string noteCode,
+            string subject,
+            string topic,
+            string reviewStatus,
+            string? reviewerComments)
+        {
+            try
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string emailSubject = $"Lesson Note {noteCode} — {reviewStatus}";
+
+                bool isApproved = reviewStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase);
+                string cardClass = isApproved ? "success-card" : "warning-card";
+
+                string commentsRow = !string.IsNullOrWhiteSpace(reviewerComments)
+                    ? $@"<tr><td class=""credential-label"">Reviewer Comments:</td><td class=""credential-value"">{reviewerComments}</td></tr>" : "";
+
+                string feedbackMessage = isApproved
+                    ? "Your lesson note has been <strong>approved</strong> by the Head of School. Well done!"
+                    : "Your lesson note requires <strong>revision</strong>. Please review the comments below and resubmit.";
+
+                string innerHtml = $@"
+      <div class=""salutation"">Dear {teacherName},</div>
+      <div class=""intro"">{feedbackMessage}</div>
+      <div class=""{cardClass}"">
+        <h3>Lesson Note Review — {reviewStatus.ToUpperInvariant()}</h3>
+        <table width=""100%"" cellpadding=""4"" cellspacing=""0"">
+          <tr><td class=""credential-label"">Note Code:</td><td class=""credential-value"">{noteCode}</td></tr>
+          <tr><td class=""credential-label"">Subject:</td><td class=""credential-value"">{subject}</td></tr>
+          <tr><td class=""credential-label"">Topic:</td><td class=""credential-value"">{topic}</td></tr>
+          <tr><td class=""credential-label"">Status:</td><td class=""credential-value""><strong>{reviewStatus.ToUpperInvariant()}</strong></td></tr>
+          {commentsRow}
+        </table>
+      </div>
+      <div class=""cta-container"">
+        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">{(isApproved ? "View Lesson Notes" : "Revise & Resubmit")}</a>
+      </div>";
+
+                string htmlBody = BuildEmailShell("Lesson Note Review", innerHtml);
+
+                string textBody = $@"
+ST. FAITH MODEL ACADEMY - LESSON NOTE REVIEW
+
+Dear {teacherName},
+
+Lesson Note {noteCode} status: {reviewStatus.ToUpperInvariant()}
+Subject: {subject}
+Topic: {topic}
+{(string.IsNullOrWhiteSpace(reviewerComments) ? "" : $"Comments: {reviewerComments}")}
+
+Portal: {loginUrl}
+";
+
+                if (!string.IsNullOrWhiteSpace(teacherEmail))
+                {
+                    await _emailSender.SendEmailAsync(new EmailMessage
+                    {
+                        ToEmail = teacherEmail,
+                        Subject = emailSubject,
+                        HtmlBody = htmlBody,
+                        TextBody = textBody
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Non-blocking error during lesson note review feedback for {NoteCode}", noteCode);
+            }
+        }
     }
 }

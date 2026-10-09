@@ -33,11 +33,13 @@ namespace SFMA_API.Services.Implementation
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public AttendanceService(IUnitOfWork unitOfWork, IMapper mapper)
+        public AttendanceService(IUnitOfWork unitOfWork, IMapper mapper, ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
         public async Task<IEnumerable<AttendanceRecordResponse>> GetAttendance(Guid classId, DateTime date, ClaimsPrincipal currentUser)
@@ -280,6 +282,23 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.GetRepository<InquiryTimelineStep>().AddAsync(timeline);
             await _unitOfWork.SaveChangesAsync();
 
+            // Notify homeroom teacher about the absence notice
+            var absenceTeacher = await _unitOfWork.GetRepository<Staff>()
+                .GetSingleByAsync(s => s.Id == teacherId,
+                    include: q => q.Include(s => s.User));
+
+            if (absenceTeacher?.User?.Email != null)
+            {
+                _ = Task.Run(() => _notificationService.SendAbsenceNoticeAlertAsync(
+                    absenceTeacher.User.DisplayName,
+                    absenceTeacher.User.Email,
+                    student.FullName,
+                    student.StudentCode,
+                    student.ClassSection?.Name ?? "Class",
+                    request.Date,
+                    request.Reason ?? "No reason provided"));
+            }
+
             return true;
         }
     }
@@ -289,12 +308,14 @@ namespace SFMA_API.Services.Implementation
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly SchoolSettings _schoolSettings;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public AssessmentService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<SchoolSettings> schoolSettings)
+        public AssessmentService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<SchoolSettings> schoolSettings, ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _schoolSettings = schoolSettings.Value;
+            _notificationService = notificationService;
         }
 
         public async Task<IEnumerable<AssessmentScoreResponse>> GetBroadsheet(Guid classId, string subject, Guid termId, ClaimsPrincipal currentUser)
@@ -347,7 +368,7 @@ namespace SFMA_API.Services.Implementation
                     throw new DeadlineElapsedException("EXAM_DEADLINE_ELAPSED", "Exam score upload deadline has elapsed.");
                 }
 
-                decimal total = (item.Ca1 ?? 0) + (item.Ca2 ?? 0) + (item.Project ?? 0) + (item.Exam ?? 0);
+                decimal total = (item.Ca1 ?? 0) + (item.Ca2 ?? 0) + (item.Exam ?? 0);
 
                 // Grade resolved from configuration — thresholds no longer hardcoded in the switch
                 string grade = _schoolSettings.ResolveGrade(total);
@@ -361,7 +382,7 @@ namespace SFMA_API.Services.Implementation
                         Subject = request.Subject,
                         Ca1Score = item.Ca1,
                         Ca2Score = item.Ca2,
-                        ProjectScore = item.Project,
+                        ProjectScore = 0,
                         ExamScore = item.Exam,
                         TotalScore = total,
                         Grade = grade,
@@ -376,7 +397,7 @@ namespace SFMA_API.Services.Implementation
                 {
                     if (item.Ca1.HasValue) record.Ca1Score = item.Ca1;
                     if (item.Ca2.HasValue) record.Ca2Score = item.Ca2;
-                    if (item.Project.HasValue) record.ProjectScore = item.Project;
+                    record.ProjectScore = 0;
                     if (item.Exam.HasValue) record.ExamScore = item.Exam;
                     record.TotalScore = total;
                     record.Grade = grade;
@@ -434,6 +455,38 @@ namespace SFMA_API.Services.Implementation
                 await _unitOfWork.GetRepository<AssessmentScore>().UpdateAsync(score);
             }
             await _unitOfWork.SaveChangesAsync();
+
+            // Notify parents that results have been approved and published
+            var term = await _unitOfWork.GetRepository<AcademicTerm>().GetByIdAsync(request.TermId);
+            string termLabel = term != null ? $"Term {term.TermNumber} {term.SessionName}" : "Current Term";
+
+            var notifiedParentIds = new HashSet<Guid>();
+            foreach (var score in scores)
+            {
+                var studentWithParents = await _unitOfWork.GetRepository<Student>()
+                    .GetSingleByAsync(s => s.Id == score.StudentId,
+                        include: q => q.Include(s => s.StudentParents).ThenInclude(sp => sp.Parent)
+                                       .Include(s => s.ClassSection));
+
+                var parent = studentWithParents?.StudentParents
+                    .Where(sp => sp.IsPrimary).Select(sp => sp.Parent).FirstOrDefault()
+                    ?? studentWithParents?.StudentParents.Select(sp => sp.Parent).FirstOrDefault();
+
+                if (parent != null && notifiedParentIds.Add(parent.Id))
+                {
+                    var capturedParent = parent;
+                    var capturedStudent = studentWithParents!;
+                    _ = Task.Run(() => _notificationService.SendResultsPublishedAlertAsync(
+                        capturedParent.FullName,
+                        capturedParent.Email,
+                        capturedParent.Phone,
+                        capturedStudent.FullName,
+                        capturedStudent.StudentCode,
+                        capturedStudent.ClassSection?.Name ?? "Class",
+                        termLabel,
+                        request.Subject));
+                }
+            }
             return true;
         }
 
@@ -456,10 +509,10 @@ namespace SFMA_API.Services.Implementation
                 include: q => q.Include(a => a.Student));
 
             var sb = new StringBuilder();
-            sb.AppendLine("Student Code,Student Name,Subject,CA1,CA2,Project,Exam,Total,Grade,Remark");
+            sb.AppendLine("Student Code,Student Name,Subject,CA1,CA2,Exam,Total,Grade,Remark");
             foreach (var s in scores)
             {
-                sb.AppendLine($"{s.Student.StudentCode},{s.Student.FullName},{s.Subject},{s.Ca1Score},{s.Ca2Score},{s.ProjectScore},{s.ExamScore},{s.TotalScore},{s.Grade},{s.Remark}");
+                sb.AppendLine($"{s.Student.StudentCode},{s.Student.FullName},{s.Subject},{s.Ca1Score},{s.Ca2Score},{s.ExamScore},{s.TotalScore},{s.Grade},{s.Remark}");
             }
             return sb.ToString();
         }
@@ -474,7 +527,7 @@ namespace SFMA_API.Services.Implementation
             foreach (var line in lines.Skip(1))
             {
                 var parts = line.Split(',');
-                if (parts.Length >= 6)
+                if (parts.Length >= 5)
                 {
                     string code = parts[0].Trim();
                     var student = students.FirstOrDefault(s => s.StudentCode.Equals(code, StringComparison.OrdinalIgnoreCase));
@@ -482,16 +535,28 @@ namespace SFMA_API.Services.Implementation
                     {
                         decimal.TryParse(parts[2], out var ca1);
                         decimal.TryParse(parts[3], out var ca2);
-                        decimal.TryParse(parts[4], out var project);
-                        decimal.TryParse(parts[5], out var exam);
-                        string remark = parts.Length > 6 ? parts[6].Trim() : string.Empty;
+                        decimal exam = 0;
+                        string remark = string.Empty;
+
+                        if (parts.Length >= 7)
+                        {
+                            // Legacy 7-column CSV: StudentCode, StudentName, CA1, CA2, Project, Exam, Remark
+                            decimal.TryParse(parts[5], out exam);
+                            remark = parts[6].Trim();
+                        }
+                        else
+                        {
+                            // 20-20-60 6-column CSV: StudentCode, StudentName, CA1, CA2, Exam, Remark
+                            decimal.TryParse(parts[4], out exam);
+                            if (parts.Length > 5) remark = parts[5].Trim();
+                        }
 
                         items.Add(new AssessmentScoreItemRequest
                         {
                             StudentId = student.Id,
                             Ca1 = ca1,
                             Ca2 = ca2,
-                            Project = project,
+                            Project = 0,
                             Exam = exam,
                             Remark = remark
                         });
@@ -510,11 +575,10 @@ namespace SFMA_API.Services.Implementation
 
         public Task<string> GetScoreTemplateCsv()
         {
-            // Template headers reflect configured grading scale thresholds from appsettings
-            // The sample row uses a placeholder code — NOT a real student code with a hardcoded year
+            // Template headers reflect the 20-20-60 assessment model: CA1 (20), CA2 (20), Exam (60)
             return Task.FromResult(
-                "StudentCode,StudentName,CA1,CA2,Project,Exam,Remark\n" +
-                "STUDENT-CODE-HERE,Student Full Name,0,0,0,0,");
+                "StudentCode,StudentName,CA1,CA2,Exam,Remark\n" +
+                "STUDENT-CODE-HERE,Student Full Name,0,0,0,");
         }
     }
 }

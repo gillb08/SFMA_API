@@ -56,6 +56,18 @@ namespace SFMA_API.Api.Controllers
         }
 
         [Authorize(Policy = "Authorization")]
+        [HttpPut("profile", Name = "update-user-profile")]
+        [SwaggerOperation(Summary = "Update current user profile")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateUserProfileRequest request)
+        {
+            var userId = GetUserId();
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            var result = await _authService.UpdateUserProfile(userId, request);
+            return Ok(result);
+        }
+
+        [Authorize(Policy = "Authorization")]
         [HttpPost("change-password", Name = "change-password")]
         [SwaggerOperation(Summary = "Change user password")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
