@@ -282,15 +282,17 @@ namespace SFMA_API.Data.SeedData
                 {
                     var sections = new List<ClassSection>
                     {
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), Name = "Crèche / Playgroup", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000002"), Name = "Nursery 1", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000003"), Name = "Nursery 2", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000004"), Name = "Basic 1", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000005"), Name = "Basic 2", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000006"), Name = "Basic 3", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000007"), Name = "Basic 4 (Emerald)", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000008"), Name = "Basic 5", Division = "Senior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000009"), Name = "Basic 6", Division = "Senior Basic", AcademicTermId = activeTerm.Id }
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), Name = "KG 1", Division = "Early Years", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000002"), Name = "KG 2", Division = "Early Years", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000003"), Name = "Pre-Nursery", Division = "Early Years", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000004"), Name = "Nursery 1", Division = "Early Years", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000005"), Name = "Nursery 2", Division = "Early Years", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000006"), Name = "Basic 1", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000007"), Name = "Basic 2", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000008"), Name = "Basic 3", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000009"), Name = "Basic 4 (Emerald)", Division = "Senior Basic", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000010"), Name = "Basic 5", Division = "Senior Basic", AcademicTermId = activeTerm.Id },
+                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000011"), Name = "Basic 6", Division = "Senior Basic", AcademicTermId = activeTerm.Id }
                     };
                     await context.ClassSections.AddRangeAsync(sections);
                     await context.SaveChangesAsync();

@@ -520,6 +520,12 @@ namespace SFMA_API.Services.Implementation
                 a => a.StudentId == studentId,
                 include: q => q.Include(a => a.Student).Include(a => a.ApprovedBy).ThenInclude(ab => ab!.User));
 
+            var isStaff = currentUser.IsInRole("super_admin") || currentUser.IsInRole("academic_admin") || currentUser.IsInRole("academic_head") || currentUser.IsInRole("teacher");
+            if (!isStaff)
+            {
+                query = query.Where(a => a.Status == AssessmentStatus.Approved || a.Status == AssessmentStatus.Published);
+            }
+
             if (termId.HasValue) query = query.Where(a => a.AcademicTermId == termId.Value);
 
             var scores = await query.ToListAsync();

@@ -42,18 +42,7 @@ namespace SFMA_API.Services.Handlers
                 throw new UnauthorizedAccessException("HttpContext is unavailable.");
             }
 
-            // 1. API Key Bypass check
-            if (httpContext.Request.Headers.TryGetValue("X-API-KEY", out var apiKey))
-            {
-                if (apiKey == _appConstants.ApiKey)
-                {
-                    context.Succeed(requirement);
-                    return;
-                }
-                throw new UnauthorizedAccessException("Invalid API Key");
-            }
-
-            // 2. User Authentication Validation
+            // 1. User Authentication Validation
             if (context.User.Identity == null || !context.User.Identity.IsAuthenticated || string.IsNullOrEmpty(context.User.Identity.Name))
             {
                 throw new OperationCanceledException("User is unauthorized");
