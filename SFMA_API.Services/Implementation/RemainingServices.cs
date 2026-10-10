@@ -140,12 +140,14 @@ namespace SFMA_API.Services.Implementation
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly SchoolSettings _schoolSettings;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public LessonNoteAndAssignmentService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<SchoolSettings> schoolSettings)
+        public LessonNoteAndAssignmentService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<SchoolSettings> schoolSettings, ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _schoolSettings = schoolSettings.Value;
+            _notificationService = notificationService;
         }
 
         public async Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(LessonNoteStatus? status, ClaimsPrincipal currentUser)
@@ -216,6 +218,26 @@ namespace SFMA_API.Services.Implementation
 
             _unitOfWork.GetRepository<LessonNote>().Update(note);
             await _unitOfWork.SaveChangesAsync();
+
+            // Notify the submitting teacher about the review outcome
+            var teacher = await _unitOfWork.GetRepository<Staff>()
+                .GetSingleByAsync(s => s.Id == note.StaffId,
+                    include: q => q.Include(s => s.User));
+
+            if (teacher?.User?.Email != null)
+            {
+                string reviewStatusLabel = request.Status == LessonNoteStatus.Approved
+                    ? "Approved" : "Revision Requested";
+
+                _ = Task.Run(() => _notificationService.SendLessonNoteReviewFeedbackAsync(
+                    teacher.User.DisplayName,
+                    teacher.User.Email,
+                    note.NoteCode,
+                    note.Subject,
+                    note.Topic,
+                    reviewStatusLabel,
+                    request.ReviewerComments));
+            }
 
             return _mapper.Map<LessonNoteResponse>(note);
         }
@@ -323,17 +345,36 @@ namespace SFMA_API.Services.Implementation
 
             return _mapper.Map<AssignmentSubmissionResponse>(submission);
         }
+
+        public async Task<AssignmentSubmissionResponse> GradeAssignmentSubmission(Guid submissionId, GradeAssignmentSubmissionRequest request, ClaimsPrincipal currentUser)
+        {
+            var submission = await _unitOfWork.GetRepository<AssignmentSubmission>()
+                .GetQueryable(s => s.Id == submissionId)
+                .Include(s => s.Student)
+                .FirstOrDefaultAsync();
+
+            if (submission == null)
+                throw new KeyNotFoundException($"Assignment submission with id {submissionId} not found.");
+
+            submission.Grade = request.Grade;
+            await _unitOfWork.GetRepository<AssignmentSubmission>().UpdateAsync(submission);
+            await _unitOfWork.SaveChangesAsync();
+
+            return _mapper.Map<AssignmentSubmissionResponse>(submission);
+        }
     }
 
     public class InquiryAndRequirementService : IInquiryAndRequirementService
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public InquiryAndRequirementService(IUnitOfWork unitOfWork, IMapper mapper)
+        public InquiryAndRequirementService(IUnitOfWork unitOfWork, IMapper mapper, ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
         public async Task<PagedResponse<InquiryResponse>> GetInquiries(InquiryStatus? status, RequestParameters parameters, ClaimsPrincipal currentUser)
@@ -418,6 +459,28 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.GetRepository<InquiryTimelineStep>().AddAsync(timeline);
             await _unitOfWork.SaveChangesAsync();
 
+            // Notify the routed staff member about the new inquiry
+            var routedStaff = await _unitOfWork.GetRepository<Staff>()
+                .GetSingleByAsync(s => s.Id == inquiry.RoutedToId,
+                    include: q => q.Include(s => s.User));
+
+            if (routedStaff?.User?.Email != null)
+            {
+                var parentForNotif = await _unitOfWork.GetRepository<Parent>()
+                    .GetSingleByAsync(p => p.Id == inquiry.ParentId);
+                var studentForNotif = await _unitOfWork.GetRepository<Student>()
+                    .GetSingleByAsync(s => s.Id == inquiry.StudentId);
+
+                _ = Task.Run(() => _notificationService.SendInquiryCreatedAlertAsync(
+                    routedStaff.User.DisplayName,
+                    routedStaff.User.Email,
+                    inquiry.InquiryCode,
+                    inquiry.Category,
+                    inquiry.SubjectLine,
+                    parentForNotif?.FullName ?? "Guardian",
+                    studentForNotif?.FullName ?? "Scholar"));
+            }
+
             return _mapper.Map<InquiryResponse>(inquiry);
         }
 
@@ -444,6 +507,37 @@ namespace SFMA_API.Services.Implementation
 
             await _unitOfWork.GetRepository<InquiryMessage>().AddAsync(message);
             await _unitOfWork.SaveChangesAsync();
+
+            // Notify the other party about the new message
+            var inquiryForNotif = await _unitOfWork.GetRepository<Inquiry>()
+                .GetSingleByAsync(i => i.Id == id,
+                    include: q => q.Include(i => i.Parent).Include(i => i.RoutedTo).ThenInclude(s => s.User));
+
+            var senderRoles = currentUser.FindAll(System.Security.Claims.ClaimTypes.Role).Select(r => r.Value).ToList();
+            string senderDisplayName = currentUser.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                ?? currentUser.FindFirst("DisplayName")?.Value ?? "Staff";
+            string preview = request.Message.Length > 120 ? request.Message[..120] + "…" : request.Message;
+
+            if (senderRoles.Contains("parent") && inquiryForNotif?.RoutedTo?.User != null)
+            {
+                _ = Task.Run(() => _notificationService.SendInquiryReplyAlertAsync(
+                    inquiryForNotif.RoutedTo.User.DisplayName,
+                    inquiryForNotif.RoutedTo.User.Email ?? "",
+                    inquiryForNotif.InquiryCode,
+                    inquiryForNotif.SubjectLine,
+                    senderDisplayName,
+                    preview));
+            }
+            else if (inquiryForNotif?.Parent != null)
+            {
+                _ = Task.Run(() => _notificationService.SendInquiryReplyAlertAsync(
+                    inquiryForNotif.Parent.FullName,
+                    inquiryForNotif.Parent.Email,
+                    inquiryForNotif.InquiryCode,
+                    inquiryForNotif.SubjectLine,
+                    senderDisplayName,
+                    preview));
+            }
 
             return _mapper.Map<InquiryMessageResponse>(message);
         }
@@ -475,6 +569,21 @@ namespace SFMA_API.Services.Implementation
             _unitOfWork.GetRepository<Inquiry>().Update(inquiry);
             await _unitOfWork.GetRepository<InquiryTimelineStep>().AddAsync(timeline);
             await _unitOfWork.SaveChangesAsync();
+
+            // Notify the parent about the inquiry status change
+            var inquiryWithParent = await _unitOfWork.GetRepository<Inquiry>()
+                .GetSingleByAsync(i => i.Id == id,
+                    include: q => q.Include(i => i.Parent));
+
+            if (inquiryWithParent?.Parent != null)
+            {
+                _ = Task.Run(() => _notificationService.SendInquiryStatusChangedAlertAsync(
+                    inquiryWithParent.Parent.FullName,
+                    inquiryWithParent.Parent.Email,
+                    inquiryWithParent.InquiryCode,
+                    inquiryWithParent.SubjectLine,
+                    request.Status.ToString()));
+            }
 
             return _mapper.Map<InquiryResponse>(inquiry);
         }

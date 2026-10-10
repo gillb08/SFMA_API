@@ -20,11 +20,13 @@ namespace SFMA_API.Services.Implementation
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public FeeService(IUnitOfWork unitOfWork, IMapper mapper)
+        public FeeService(IUnitOfWork unitOfWork, IMapper mapper, ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
         public async Task<FeeScheduleResponse?> GetFeeSchedule(Guid termId, Guid? classSectionId)
@@ -201,6 +203,52 @@ namespace SFMA_API.Services.Implementation
 
             await _unitOfWork.SaveChangesAsync();
 
+            // Dispatch payment verification/rejection confirmation to parent
+            var primaryParent = await _unitOfWork.GetRepository<StudentParent>()
+                .GetQueryable(sp => sp.StudentId == transaction.StudentId && sp.IsPrimary)
+                .Include(sp => sp.Parent)
+                .Select(sp => sp.Parent)
+                .FirstOrDefaultAsync();
+
+            if (primaryParent == null)
+            {
+                primaryParent = await _unitOfWork.GetRepository<StudentParent>()
+                    .GetQueryable(sp => sp.StudentId == transaction.StudentId)
+                    .Include(sp => sp.Parent)
+                    .Select(sp => sp.Parent)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (primaryParent != null)
+            {
+                string receiptCode = "";
+                if (transaction.Status == FeeTransactionStatus.Verified || transaction.Status == FeeTransactionStatus.Cleared)
+                {
+                    var receiptForNotification = await _unitOfWork.GetRepository<Receipt>()
+                        .GetSingleByAsync(r => r.FeeTransactionId == transaction.Id);
+                    receiptCode = receiptForNotification?.ReceiptCode ?? "";
+                }
+
+                string statusLabel = transaction.Status switch
+                {
+                    FeeTransactionStatus.Verified => "Verified",
+                    FeeTransactionStatus.Cleared => "Cleared",
+                    FeeTransactionStatus.Rejected => "Rejected",
+                    _ => transaction.Status.ToString()
+                };
+
+                _ = Task.Run(() => _notificationService.SendPaymentVerificationConfirmationAsync(
+                    primaryParent.FullName,
+                    primaryParent.Email,
+                    primaryParent.Phone,
+                    transaction.Student?.FullName ?? "Scholar",
+                    transaction.Student?.StudentCode ?? "",
+                    transaction.AmountPaid,
+                    receiptCode,
+                    transaction.PaymentMethod,
+                    statusLabel));
+            }
+
             var response = _mapper.Map<FeeTransactionResponse>(transaction);
             // Use actual verifier name; fall back to "Unknown" rather than a misleading role name
             response.VerifiedByName = staff?.User?.DisplayName ?? "Unknown";
@@ -227,9 +275,59 @@ namespace SFMA_API.Services.Implementation
             return receipt != null ? _mapper.Map<ReceiptResponse>(receipt) : null;
         }
 
-        public Task<bool> QueuePaymentReminders(QueuePaymentRemindersRequest request)
+        public async Task<bool> QueuePaymentReminders(QueuePaymentRemindersRequest request)
         {
-            return Task.FromResult(true);
+            var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>()
+                .GetSingleByAsync(t => t.IsActive);
+            if (activeTerm == null) return false;
+
+            string termLabel = $"Term {activeTerm.TermNumber} {activeTerm.SessionName}";
+
+            var students = await _unitOfWork.GetRepository<Student>()
+                .GetQueryable(include: q => q
+                    .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent)
+                    .Include(s => s.FeeTransactions))
+                .ToListAsync();
+
+            var schedules = await _unitOfWork.GetRepository<FeeSchedule>()
+                .GetByAsync(f => f.AcademicTermId == activeTerm.Id,
+                    include: q => q.Include(f => f.FeeItems));
+
+            int sentCount = 0;
+            foreach (var student in students)
+            {
+                decimal totalBilled = schedules
+                    .Where(s => s.ClassSectionId == null || s.ClassSectionId == student.ClassSectionId)
+                    .Sum(s => s.TotalAmount);
+
+                decimal totalPaid = student.FeeTransactions
+                    .Where(t => t.AcademicTermId == activeTerm.Id &&
+                        (t.Status == FeeTransactionStatus.Verified ||
+                         t.Status == FeeTransactionStatus.Cleared))
+                    .Sum(t => t.AmountPaid);
+
+                decimal balance = totalBilled - totalPaid;
+                if (balance <= 0) continue;
+
+                var primaryParent = student.StudentParents
+                    .Where(sp => sp.IsPrimary).Select(sp => sp.Parent).FirstOrDefault()
+                    ?? student.StudentParents.Select(sp => sp.Parent).FirstOrDefault();
+
+                if (primaryParent == null) continue;
+
+                _ = Task.Run(() => _notificationService.SendFeePaymentReminderAsync(
+                    primaryParent.FullName,
+                    primaryParent.Email,
+                    primaryParent.Phone,
+                    student.FullName,
+                    student.StudentCode,
+                    balance,
+                    termLabel));
+
+                sentCount++;
+            }
+
+            return sentCount > 0;
         }
 
         public async Task<IEnumerable<BankAccountResponse>> GetBankAccounts()
@@ -248,11 +346,13 @@ namespace SFMA_API.Services.Implementation
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ISchoolNotificationService _notificationService;
 
-        public RequisitionService(IUnitOfWork unitOfWork, IMapper mapper)
+        public RequisitionService(IUnitOfWork unitOfWork, IMapper mapper, ISchoolNotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
         public async Task<PagedResponse<RequisitionResponse>> GetRequisitions(RequisitionStatus? status, string? department, RequestParameters parameters, ClaimsPrincipal currentUser)
@@ -358,7 +458,7 @@ namespace SFMA_API.Services.Implementation
             }
 
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User));
             var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
 
             var currentStage = requisition.ApprovalStages.OrderByDescending(s => s.CreatedAt).FirstOrDefault(s => s.Action == ApprovalAction.Pending);
@@ -424,6 +524,21 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.GetRepository<Requisition>().UpdateAsync(requisition);
             await _unitOfWork.SaveChangesAsync();
 
+            // Notify the requester about the approval status change
+            if (requisition.RequestedBy?.User?.Email != null)
+            {
+                string statusLabel = requisition.Status.ToString();
+                _ = Task.Run(() => _notificationService.SendRequisitionStatusUpdateAsync(
+                    requisition.RequestedBy.User.DisplayName,
+                    requisition.RequestedBy.User.Email,
+                    requisition.RequisitionCode,
+                    requisition.Title,
+                    statusLabel,
+                    staff?.User?.DisplayName ?? "Approver",
+                    roles.FirstOrDefault() ?? "Supervisor",
+                    request.Notes));
+            }
+
             return _mapper.Map<RequisitionResponse>(requisition);
         }
 
@@ -440,7 +555,8 @@ namespace SFMA_API.Services.Implementation
             }
 
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User));
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
 
             var currentStage = requisition.ApprovalStages.OrderByDescending(s => s.CreatedAt).FirstOrDefault(s => s.Action == ApprovalAction.Pending);
             if (currentStage != null)
@@ -456,6 +572,20 @@ namespace SFMA_API.Services.Implementation
             requisition.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.GetRepository<Requisition>().UpdateAsync(requisition);
             await _unitOfWork.SaveChangesAsync();
+
+            // Notify the requester about the query/rejection
+            if (requisition.RequestedBy?.User?.Email != null)
+            {
+                _ = Task.Run(() => _notificationService.SendRequisitionStatusUpdateAsync(
+                    requisition.RequestedBy.User.DisplayName,
+                    requisition.RequestedBy.User.Email,
+                    requisition.RequisitionCode,
+                    requisition.Title,
+                    "Queried",
+                    staff?.User?.DisplayName ?? "Reviewer",
+                    roles.FirstOrDefault() ?? "Supervisor",
+                    request.Reason));
+            }
 
             return _mapper.Map<RequisitionResponse>(requisition);
         }

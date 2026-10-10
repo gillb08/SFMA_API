@@ -16,6 +16,7 @@ namespace SFMA_API.Services.Interfaces
         Task<bool> ChangePassword(string userId, ChangePasswordRequest request);
         Task<bool> ResetPassword(ResetPasswordRequest request);
         Task<LoggedInUserResponse> RefreshAccessToken(RefreshAccessTokenRequest request);
+        Task<UserProfileResponse> UpdateUserProfile(string userId, UpdateUserProfileRequest request);
     }
 
     public interface ITermService
@@ -142,6 +143,7 @@ namespace SFMA_API.Services.Interfaces
         Task<AssignmentResponse> UpdateAssignment(Guid id, UpdateAssignmentRequest request);
         Task<IEnumerable<AssignmentSubmissionResponse>> GetAssignmentSubmissions(Guid assignmentId, ClaimsPrincipal currentUser);
         Task<AssignmentSubmissionResponse> SubmitAssignment(Guid assignmentId, SubmitAssignmentRequest request, ClaimsPrincipal currentUser);
+        Task<AssignmentSubmissionResponse> GradeAssignmentSubmission(Guid submissionId, GradeAssignmentSubmissionRequest request, ClaimsPrincipal currentUser);
     }
 
     public interface IInquiryAndRequirementService
@@ -200,5 +202,91 @@ namespace SFMA_API.Services.Interfaces
             string staffEmail,
             string staffPhone,
             string tempPassword);
+
+        // ── Fee Notifications ──────────────────────────────────────────────
+        Task SendFeePaymentReminderAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            decimal amountDue,
+            string termLabel);
+
+        Task SendPaymentVerificationConfirmationAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            decimal amountPaid,
+            string receiptCode,
+            string paymentMethod,
+            string status);
+
+        // ── Inquiry & Helpdesk Notifications ───────────────────────────────
+        Task SendInquiryCreatedAlertAsync(
+            string staffName,
+            string staffEmail,
+            string inquiryCode,
+            string category,
+            string subjectLine,
+            string parentName,
+            string studentName);
+
+        Task SendInquiryReplyAlertAsync(
+            string recipientName,
+            string recipientEmail,
+            string inquiryCode,
+            string subjectLine,
+            string senderName,
+            string messagePreview);
+
+        Task SendInquiryStatusChangedAlertAsync(
+            string parentName,
+            string parentEmail,
+            string inquiryCode,
+            string subjectLine,
+            string newStatus);
+
+        // ── Attendance & Academics ─────────────────────────────────────────
+        Task SendAbsenceNoticeAlertAsync(
+            string teacherName,
+            string teacherEmail,
+            string studentName,
+            string studentCode,
+            string className,
+            DateTime absenceDate,
+            string reason);
+
+        Task SendResultsPublishedAlertAsync(
+            string guardianName,
+            string guardianEmail,
+            string guardianPhone,
+            string studentName,
+            string studentCode,
+            string className,
+            string termLabel,
+            string subject);
+
+        // ── Internal Staff Workflow Notifications ──────────────────────────
+        Task SendRequisitionStatusUpdateAsync(
+            string staffName,
+            string staffEmail,
+            string requisitionCode,
+            string title,
+            string newStatus,
+            string actedByName,
+            string actedByRole,
+            string? notes);
+
+        Task SendLessonNoteReviewFeedbackAsync(
+            string teacherName,
+            string teacherEmail,
+            string noteCode,
+            string subject,
+            string topic,
+            string reviewStatus,
+            string? reviewerComments);
     }
 }
