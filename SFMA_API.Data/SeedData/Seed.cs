@@ -42,11 +42,51 @@ namespace SFMA_API.Data.SeedData
                 "get-assignments", "create-assignment", "update-assignment", "get-assignment-submissions",
                 "get-inquiries", "get-inquiry-by-id", "create-inquiry", "add-inquiry-message", "update-inquiry-status",
                 "get-school-requirements", "toggle-requirement-status", "export-requirements-pdf",
-                "get-executive-dashboard", "get-academic-snapshot", "get-budget-progress", "get-financial-dashboard"
+                "get-executive-dashboard", "get-academic-snapshot", "get-budget-progress", "get-financial-dashboard",
+                "grade-assignment-submission", "verify-fee-teller", "queue-fee-reminders", "update-user-profile"
+            },
+            ["financial_admin"] = new List<string>
+            {
+                "logout", "get-current-user-profile", "change-password", "update-user-profile",
+                "get-all-terms", "get-active-term",
+                "get-all-staff", "get-staff-by-id",
+                "get-all-students", "get-student-by-id", "get-student-id-card",
+                "get-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "get-student-receipts", "get-receipt-pdf", "get-bank-accounts", "get-student-statement",
+                "post-fee-teller", "verify-fee-teller", "queue-fee-reminders",
+                "get-all-requisitions", "get-requisition-by-id", "create-requisition", "approve-requisition", "query-requisition",
+                "get-inquiries", "get-inquiry-by-id", "create-inquiry", "add-inquiry-message", "update-inquiry-status",
+                "get-school-requirements", "export-requirements-pdf",
+                "get-executive-dashboard", "get-financial-dashboard", "get-budget-progress", "get-academic-snapshot"
+            },
+            ["financial_head"] = new List<string>
+            {
+                "logout", "get-current-user-profile", "change-password", "update-user-profile",
+                "get-all-terms", "get-active-term",
+                "get-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "get-bank-accounts",
+                "get-all-requisitions", "get-requisition-by-id", "create-requisition", "approve-requisition", "query-requisition",
+                "get-executive-dashboard", "get-financial-dashboard", "get-budget-progress",
+                "get-inquiries", "get-inquiry-by-id", "create-inquiry", "add-inquiry-message"
+            },
+            ["academic_head"] = new List<string>
+            {
+                "logout", "get-current-user-profile", "change-password", "update-user-profile",
+                "get-all-terms", "get-active-term", "update-term", "configure-deadlines",
+                "get-all-staff", "get-staff-by-id",
+                "get-all-students", "get-student-by-id", "get-student-id-card", "batch-print-id-cards",
+                "get-daily-attendance", "get-student-monthly-attendance", "batch-mark-attendance", "lock-attendance-register", "unlock-attendance-register", "get-attendance-audit-logs", "export-attendance-csv",
+                "get-assessment-broadsheet", "batch-update-scores", "submit-broadsheet", "approve-broadsheet", "get-student-results", "export-broadsheet-results", "import-scores-csv", "get-score-template-csv",
+                "get-scheme-of-work", "create-scheme-of-work", "update-scheme-of-work", "vet-scheme-of-work",
+                "get-timetable", "update-timetable",
+                "get-all-lesson-notes", "create-lesson-note", "review-lesson-note",
+                "get-assignments", "create-assignment", "update-assignment", "get-assignment-submissions", "grade-assignment-submission",
+                "get-inquiries", "get-inquiry-by-id", "create-inquiry", "add-inquiry-message", "update-inquiry-status",
+                "get-school-requirements", "toggle-requirement-status", "export-requirements-pdf",
+                "get-all-requisitions", "get-requisition-by-id", "create-requisition",
+                "get-executive-dashboard", "get-academic-snapshot", "get-budget-progress"
             },
             ["teacher"] = new List<string>
             {
-                "logout", "get-current-user-profile", "change-password",
+                "logout", "get-current-user-profile", "change-password", "update-user-profile",
                 "get-all-terms", "get-active-term",
                 "get-all-students", "get-student-by-id", "update-student-biodata", "get-student-id-card",
                 "get-daily-attendance", "get-student-monthly-attendance", "batch-mark-attendance", "lock-attendance-register", "export-attendance-csv",
@@ -56,7 +96,7 @@ namespace SFMA_API.Data.SeedData
                 "get-scheme-of-work", "create-scheme-of-work", "update-scheme-of-work",
                 "get-timetable",
                 "get-all-lesson-notes", "create-lesson-note",
-                "get-assignments", "create-assignment", "update-assignment", "get-assignment-submissions",
+                "get-assignments", "create-assignment", "update-assignment", "get-assignment-submissions", "grade-assignment-submission",
                 "get-inquiries", "get-inquiry-by-id", "create-inquiry", "add-inquiry-message",
                 "get-school-requirements", "toggle-requirement-status"
             },

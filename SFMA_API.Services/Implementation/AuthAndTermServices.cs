@@ -123,6 +123,14 @@ namespace SFMA_API.Services.Implementation
                 permissionsSet.Add("all");
             }
 
+            // Baseline session permissions for every authenticated user
+            permissionsSet.Add("logout");
+            permissionsSet.Add("get-current-user-profile");
+            permissionsSet.Add("change-password");
+            permissionsSet.Add("update-user-profile");
+            permissionsSet.Add("get-active-term");
+            permissionsSet.Add("get-all-terms");
+
             foreach (var ur in userRoles)
             {
                 if (ur.Role.Active)
