@@ -503,7 +503,7 @@ namespace SFMA_API.Services.Implementation
                 await _unitOfWork.GetRepository<ApprovalStage>().AddAsync(nextStage);
                 requisition.Status = RequisitionStatus.InReview;
             }
-            else if (roles.Contains("financial_head"))
+            else if (roles.Contains("financial_head") || roles.Contains("super_admin"))
             {
                 if (currentStage != null)
                 {
@@ -514,28 +514,8 @@ namespace SFMA_API.Services.Implementation
                     await _unitOfWork.GetRepository<ApprovalStage>().UpdateAsync(currentStage);
                 }
 
-                // Advance to Super Admin
-                var nextStage = new ApprovalStage
-                {
-                    Id = Guid.NewGuid(),
-                    RequisitionId = requisition.Id,
-                    Stage = ApprovalStageType.SuperAdmin,
-                    Action = ApprovalAction.Pending
-                };
-                await _unitOfWork.GetRepository<ApprovalStage>().AddAsync(nextStage);
-                requisition.Status = RequisitionStatus.InReview;
-            }
-            else if (roles.Contains("super_admin"))
-            {
-                if (currentStage != null)
-                {
-                    currentStage.Action = ApprovalAction.Approved;
-                    currentStage.ActedById = staff?.Id;
-                    currentStage.ActedAt = DateTime.UtcNow;
-                    currentStage.Notes = request.Notes;
-                    await _unitOfWork.GetRepository<ApprovalStage>().UpdateAsync(currentStage);
-                }
-                requisition.Status = RequisitionStatus.Disbursed;
+                // Strict 2-tier workflow concludes at Financial Head approval
+                requisition.Status = RequisitionStatus.Approved;
             }
 
             requisition.UpdatedAt = DateTime.UtcNow;

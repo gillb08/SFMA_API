@@ -4,7 +4,7 @@ namespace SFMA_API.Services.Infrastructure
     {
         public string SchoolName { get; set; } = "St. Faith Model Academy";
         public string SchoolAcronym { get; set; } = "SFMA";
-        public string ApiKey { get; set; } = "SFMA-SECURE-API-KEY-2026";
+        public string ApiKey { get; set; } = string.Empty;
     }
 
     public class DatabaseConfig

@@ -16,6 +16,9 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace SFMA_API.Services.Implementation
 {
@@ -343,13 +346,46 @@ namespace SFMA_API.Services.Implementation
                 s => request.StudentIds.Contains(s.Id),
                 include: q => q.Include(s => s.ClassSection));
 
-            var sb = new StringBuilder();
-            sb.AppendLine("Student Code,Full Name,Class,Admitted Date");
-            foreach (var s in students)
+            QuestPDF.Settings.License = LicenseType.Community;
+
+            var document = Document.Create(container =>
             {
-                sb.AppendLine($"{s.StudentCode},{s.FullName},{s.ClassSection?.Name ?? "N/A"},{s.AdmittedAt:yyyy-MM-dd}");
-            }
-            return Encoding.UTF8.GetBytes(sb.ToString());
+                foreach (var student in students)
+                {
+                    container.Page(page =>
+                    {
+                        page.Size(PageSizes.A6.Landscape());
+                        page.Margin(15);
+                        page.Header().Row(row =>
+                        {
+                            row.RelativeItem().Column(col =>
+                            {
+                                col.Item().Text("ST. FAITH MODEL ACADEMY").Bold().FontSize(14).FontColor(Colors.Blue.Darken2);
+                                col.Item().Text("OFFICIAL STUDENT IDENTIFICATION CARD").FontSize(8).FontColor(Colors.Grey.Medium);
+                            });
+                        });
+
+                        page.Content().PaddingVertical(10).Row(row =>
+                        {
+                            row.RelativeItem().Column(col =>
+                            {
+                                col.Item().Text($"Student Name: {student.FullName}").Bold().FontSize(11);
+                                col.Item().Text($"Student Code: {student.StudentCode}").FontSize(9);
+                                col.Item().Text($"Class Section: {student.ClassSection?.Name ?? "General"}").FontSize(9);
+                                col.Item().Text($"Admitted Date: {student.AdmittedAt:dd MMM yyyy}").FontSize(9);
+                                col.Item().Text("Emergency Contact: School Administration Office").FontSize(8).FontColor(Colors.Grey.Darken1);
+                            });
+                        });
+
+                        page.Footer().AlignCenter().Text(t =>
+                        {
+                            t.Span("St. Faith Model Academy • Excellence & Integrity • Valid for Active Session").FontSize(7).FontColor(Colors.Grey.Medium);
+                        });
+                    });
+                }
+            });
+
+            return document.GeneratePdf();
         }
     }
 }

@@ -914,7 +914,7 @@ namespace SFMA_API.Services.Implementation
                 var budgetRecord = departmentBudgets.FirstOrDefault(b => b.Department == g.Key);
                 decimal budget = budgetRecord?.AllocatedAmount ?? _schoolSettings.DefaultDepartmentBudget;
 
-                var actual = g.Where(r => r.Status == RequisitionStatus.Approved).Sum(r => r.Amount);
+                var actual = g.Where(r => r.Status == RequisitionStatus.Approved || r.Status == RequisitionStatus.Disbursed).Sum(r => r.Amount);
                 progress.Add(new BudgetItemProgress
                 {
                     Category = g.Key,
