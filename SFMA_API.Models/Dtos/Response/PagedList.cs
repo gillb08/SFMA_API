@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace SFMA_API.Models.Dtos.Response
 {
@@ -47,3 +48,4 @@ namespace SFMA_API.Models.Dtos.Response
         public IEnumerable<T> Items { get; set; } = new List<T>();
     }
 }
+
