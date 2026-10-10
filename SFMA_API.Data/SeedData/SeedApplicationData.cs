@@ -92,11 +92,19 @@ namespace SFMA_API.Data.SeedData
             // Ensure a corresponding Staff record exists for the Super Admin
             if (existingAdmin != null && !await context.Staff.AnyAsync(s => s.UserId == existingAdmin.Id))
             {
+                var staffCount = await context.Staff.CountAsync();
+                string staffCode = "ADM-001";
+                while (await context.Staff.AnyAsync(s => s.StaffCode == staffCode))
+                {
+                    staffCount++;
+                    staffCode = $"ADM-{staffCount:D3}";
+                }
+
                 var adminStaff = new Staff
                 {
                     Id = Guid.NewGuid(),
                     UserId = existingAdmin.Id,
-                    StaffCode = "STF-001",
+                    StaffCode = staffCode,
                     Department = "Administration",
                     Title = "Proprietress / Super Admin",
                     Phone = existingAdmin.PhoneNumber ?? "08037820733",
