@@ -106,7 +106,7 @@ namespace SFMA_API.Services.Implementation
                 PhoneNumber = request.Phone,
                 Status = UserStatus.Active,
                 Active = true,
-                EmailConfirmed = true
+                EmailConfirmed = false
             };
 
             var userRes = await _userManager.CreateAsync(user, tempPassword);
@@ -114,6 +114,9 @@ namespace SFMA_API.Services.Implementation
             {
                 throw new InvalidOperationException(string.Join("\n", userRes.Errors.Select(e => e.Description)));
             }
+
+            // Generate email confirmation token for auto-verification URL
+            string verificationToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
 
             if (!await _roleManager.RoleExistsAsync(request.RoleKey))
             {
@@ -152,7 +155,8 @@ namespace SFMA_API.Services.Implementation
                 staffCode,
                 request.Department,
                 request.RoleKey,
-                tempPassword));
+                tempPassword,
+                verificationToken));
 
             return new CreateStaffResponse
             {

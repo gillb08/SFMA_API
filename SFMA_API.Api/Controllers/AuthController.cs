@@ -7,6 +7,8 @@ using SFMA_API.Services.Interfaces;
 using Swashbuckle.AspNetCore.Annotations;
 using System;
 using System.Collections.Generic;
+using Microsoft.Extensions.Options;
+using SFMA_API.Models.Configuration;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
@@ -16,10 +18,12 @@ namespace SFMA_API.Api.Controllers
     public class AuthController : BaseController
     {
         private readonly IAuthenticationService _authService;
+        private readonly EmailOptions _emailOptions;
 
-        public AuthController(IAuthenticationService authService)
+        public AuthController(IAuthenticationService authService, IOptions<EmailOptions> emailOptions)
         {
             _authService = authService;
+            _emailOptions = emailOptions.Value;
         }
 
         [HttpPost("login", Name = "login")]
@@ -95,6 +99,34 @@ namespace SFMA_API.Api.Controllers
         {
             var result = await _authService.RefreshAccessToken(request);
             return Ok(result);
+        }
+
+        [HttpPost("confirm-email", Name = "confirm-email")]
+        [SwaggerOperation(Summary = "Confirm user email via verification token")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailRequest request)
+        {
+            var result = await _authService.ConfirmEmail(request);
+            return Ok(new SuccessResponse { Message = "Email confirmed successfully. You may now proceed to log in." });
+        }
+
+        [HttpGet("confirm-email", Name = "confirm-email-get")]
+        [SwaggerOperation(Summary = "Confirm email via link and redirect to portal login")]
+        public async Task<IActionResult> ConfirmEmailGet([FromQuery] string email, [FromQuery] string token)
+        {
+            try
+            {
+                await _authService.ConfirmEmail(new ConfirmEmailRequest { Email = email, Token = token });
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string redirectUrl = $"{loginUrl}?verified=true&email={Uri.EscapeDataString(email ?? string.Empty)}";
+                return Redirect(redirectUrl);
+            }
+            catch (Exception ex)
+            {
+                string loginUrl = _emailOptions.PortalLoginUrl;
+                string redirectUrl = $"{loginUrl}?verified=false&error={Uri.EscapeDataString(ex.Message)}";
+                return Redirect(redirectUrl);
+            }
         }
     }
 }

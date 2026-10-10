@@ -17,6 +17,7 @@ namespace SFMA_API.Services.Interfaces
         Task<bool> ResetPassword(ResetPasswordRequest request);
         Task<LoggedInUserResponse> RefreshAccessToken(RefreshAccessTokenRequest request);
         Task<UserProfileResponse> UpdateUserProfile(string userId, UpdateUserProfileRequest request);
+        Task<bool> ConfirmEmail(ConfirmEmailRequest request);
     }
 
     public interface ITermService
@@ -195,7 +196,8 @@ namespace SFMA_API.Services.Interfaces
             string staffCode,
             string department,
             string roleName,
-            string tempPassword);
+            string tempPassword,
+            string? verificationToken = null);
 
         Task SendStaffPasswordResetAsync(
             string staffName,

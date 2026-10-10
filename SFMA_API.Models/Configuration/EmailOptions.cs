@@ -4,10 +4,12 @@ namespace SFMA_API.Models.Configuration
     {
         public const string SectionName = "Email";
 
-        public string FromEmail { get; set; } = "admissions@stfaithacademy.edu.ng";
+        public string FromEmail { get; set; } = "admissions@stfaithmodelacademy.com";
         public string FromName { get; set; } = "St. Faith Model Academy";
-        public string ReplyToEmail { get; set; } = "support@stfaithacademy.edu.ng";
-        public string PortalLoginUrl { get; set; } = "https://stfaithacademy.edu.ng/login";
+        public string ReplyToEmail { get; set; } = "support@stfaithmodelacademy.com";
+        public string AppBaseUrl { get; set; } = "https://www.stfaithmodelacademy.com";
+        public string PortalLoginUrl { get; set; } = "https://www.stfaithmodelacademy.com/login";
+        public string VerificationUrl { get; set; } = "https://www.stfaithmodelacademy.com/verify-email";
         public ResendOptions Resend { get; set; } = new();
     }
 
