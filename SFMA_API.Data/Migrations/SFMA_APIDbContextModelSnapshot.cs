@@ -844,6 +844,12 @@ namespace SFMA_API.Data.Migrations
                     b.Property<decimal>("AmountPaid")
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<string>("AttachmentFile")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BankName")
+                        .HasColumnType("text");
+
                     b.Property<string>("BankTellerRef")
                         .HasColumnType("text");
 
@@ -938,6 +944,12 @@ namespace SFMA_API.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ChildName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClassApplying")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -945,16 +957,28 @@ namespace SFMA_API.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("ParentId")
+                    b.Property<string>("Message")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ParentEmail")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("RoutedToId")
+                    b.Property<string>("ParentName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ParentPhone")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("RoutedToId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
-                    b.Property<Guid>("StudentId")
+                    b.Property<Guid?>("StudentId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("SubjectLine")
@@ -998,7 +1022,12 @@ namespace SFMA_API.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("SenderId")
-                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SenderName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SenderRole")
                         .HasColumnType("text");
 
                     b.Property<DateTime>("SentAt")
@@ -1926,20 +1955,17 @@ namespace SFMA_API.Data.Migrations
                     b.HasOne("SFMA_API.Models.Entities.Parent", "Parent")
                         .WithMany("Inquiries")
                         .HasForeignKey("ParentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("SFMA_API.Models.Entities.Staff", "RoutedTo")
                         .WithMany()
                         .HasForeignKey("RoutedToId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("SFMA_API.Models.Entities.Student", "Student")
                         .WithMany("Inquiries")
                         .HasForeignKey("StudentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Parent");
 
@@ -1959,8 +1985,7 @@ namespace SFMA_API.Data.Migrations
                     b.HasOne("SFMA_API.Models.Entities.ApplicationUser", "Sender")
                         .WithMany()
                         .HasForeignKey("SenderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Inquiry");
 

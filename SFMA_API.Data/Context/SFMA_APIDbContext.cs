@@ -343,14 +343,17 @@ namespace SFMA_API.Data.Context
                 entity.HasOne(i => i.Parent)
                     .WithMany(p => p.Inquiries)
                     .HasForeignKey(i => i.ParentId)
+                    .IsRequired(false)
                     .OnDelete(DeleteBehavior.Restrict);
                 entity.HasOne(i => i.Student)
                     .WithMany(s => s.Inquiries)
                     .HasForeignKey(i => i.StudentId)
+                    .IsRequired(false)
                     .OnDelete(DeleteBehavior.Restrict);
                 entity.HasOne(i => i.RoutedTo)
                     .WithMany()
                     .HasForeignKey(i => i.RoutedToId)
+                    .IsRequired(false)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
@@ -363,6 +366,7 @@ namespace SFMA_API.Data.Context
                 entity.HasOne(m => m.Sender)
                     .WithMany()
                     .HasForeignKey(m => m.SenderId)
+                    .IsRequired(false)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 

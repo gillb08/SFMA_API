@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -8,16 +8,24 @@ namespace SFMA_API.Models.Entities
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public string InquiryCode { get; set; } = string.Empty;
-        public Guid ParentId { get; set; }
-        public Guid StudentId { get; set; }
+        public Guid? ParentId { get; set; }
+        public Guid? StudentId { get; set; }
+        public Guid? RoutedToId { get; set; }
+
+        public string? ParentName { get; set; }
+        public string? ParentPhone { get; set; }
+        public string? ParentEmail { get; set; }
+        public string? ChildName { get; set; }
+        public string? ClassApplying { get; set; }
+        public string? Message { get; set; }
+
         public string Category { get; set; } = string.Empty;
         public string SubjectLine { get; set; } = string.Empty;
-        public Guid RoutedToId { get; set; }
         public InquiryStatus Status { get; set; } = InquiryStatus.Open;
 
-        public virtual Parent Parent { get; set; } = null!;
-        public virtual Student Student { get; set; } = null!;
-        public virtual Staff RoutedTo { get; set; } = null!;
+        public virtual Parent? Parent { get; set; }
+        public virtual Student? Student { get; set; }
+        public virtual Staff? RoutedTo { get; set; }
         public virtual ICollection<InquiryMessage> Messages { get; set; } = new List<InquiryMessage>();
         public virtual ICollection<InquiryTimelineStep> TimelineSteps { get; set; } = new List<InquiryTimelineStep>();
     }
@@ -26,12 +34,14 @@ namespace SFMA_API.Models.Entities
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid InquiryId { get; set; }
-        public string SenderId { get; set; } = string.Empty;
+        public string? SenderId { get; set; }
+        public string? SenderName { get; set; }
+        public string? SenderRole { get; set; }
         public string Message { get; set; } = string.Empty;
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
 
         public virtual Inquiry Inquiry { get; set; } = null!;
-        public virtual ApplicationUser Sender { get; set; } = null!;
+        public virtual ApplicationUser? Sender { get; set; }
     }
 
     public class InquiryTimelineStep : BaseEntity

@@ -95,13 +95,16 @@ namespace SFMA_API.Models.Configuration.MappingConfiguration
             CreateMap<AssignmentSubmission, AssignmentSubmissionResponse>()
                 .ForMember(d => d.StudentName, opt => opt.MapFrom(s => s.Student != null ? s.Student.FullName : string.Empty));
 
+            CreateMap<CreateInquiryRequest, Inquiry>()
+                .ForMember(d => d.SubjectLine, opt => opt.MapFrom(s => !string.IsNullOrWhiteSpace(s.SubjectLine) ? s.SubjectLine : (!string.IsNullOrWhiteSpace(s.Subject) ? s.Subject : "Admission Inquiry")));
+
             CreateMap<Inquiry, InquiryResponse>()
-                .ForMember(d => d.ParentName, opt => opt.MapFrom(s => s.Parent != null ? s.Parent.FullName : string.Empty))
-                .ForMember(d => d.StudentName, opt => opt.MapFrom(s => s.Student != null ? s.Student.FullName : string.Empty))
+                .ForMember(d => d.ParentName, opt => opt.MapFrom(s => s.Parent != null ? s.Parent.FullName : (!string.IsNullOrEmpty(s.ParentName) ? s.ParentName : string.Empty)))
+                .ForMember(d => d.StudentName, opt => opt.MapFrom(s => s.Student != null ? s.Student.FullName : (!string.IsNullOrEmpty(s.ChildName) ? s.ChildName : string.Empty)))
                 .ForMember(d => d.RoutedToName, opt => opt.MapFrom(s => s.RoutedTo != null && s.RoutedTo.User != null ? s.RoutedTo.User.DisplayName : string.Empty));
 
             CreateMap<InquiryMessage, InquiryMessageResponse>()
-                .ForMember(d => d.SenderName, opt => opt.MapFrom(s => s.Sender != null ? s.Sender.DisplayName : string.Empty));
+                .ForMember(d => d.SenderName, opt => opt.MapFrom(s => s.Sender != null ? s.Sender.DisplayName : (!string.IsNullOrEmpty(s.SenderName) ? s.SenderName : string.Empty)));
 
             CreateMap<InquiryTimelineStep, InquiryTimelineStepResponse>();
 
