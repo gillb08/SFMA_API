@@ -42,6 +42,7 @@ namespace SFMA_API.Api.Controllers
         }
 
         [HttpPost("", Name = "create-inquiry")]
+        [AllowAnonymous]
         [SwaggerOperation(Summary = "Create an inquiry or support request")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateInquiry([FromBody] CreateInquiryRequest request)

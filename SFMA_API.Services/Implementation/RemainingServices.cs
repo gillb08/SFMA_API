@@ -314,10 +314,31 @@ namespace SFMA_API.Services.Implementation
             if (assignment == null)
                 throw new KeyNotFoundException($"Assignment with id {assignmentId} not found.");
 
-            var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var student = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+            // Determine StudentId: Prefer explicit request.StudentId if valid, otherwise lookup by current user
+            Guid studentId = Guid.Empty;
+            if (request.StudentId != Guid.Empty)
+            {
+                var targetStudent = await _unitOfWork.GetRepository<Student>().GetByIdAsync(request.StudentId);
+                if (targetStudent != null)
+                {
+                    studentId = targetStudent.Id;
+                }
+            }
 
-            var studentId = student?.Id ?? Guid.Empty;
+            if (studentId == Guid.Empty)
+            {
+                var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var student = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+                if (student != null)
+                {
+                    studentId = student.Id;
+                }
+            }
+
+            if (studentId == Guid.Empty)
+            {
+                throw new InvalidOperationException("Could not identify a valid student record for assignment submission.");
+            }
 
             // FileName and FileType must be supplied by the caller.
             // No silent defaults — a missing or mismatched type would corrupt submission metadata.
@@ -445,6 +466,51 @@ namespace SFMA_API.Services.Implementation
             inquiry.Status = InquiryStatus.Open;
             inquiry.CreatedAt = DateTime.UtcNow;
 
+            // Ensure subject line is set
+            if (string.IsNullOrWhiteSpace(inquiry.SubjectLine))
+            {
+                inquiry.SubjectLine = !string.IsNullOrWhiteSpace(request.Subject)
+                    ? request.Subject
+                    : $"Admission Inquiry: {request.ChildName ?? "New Scholar"} for {request.ClassApplying ?? "Admission"}";
+            }
+
+            // Bind prospective fields
+            inquiry.ParentName = request.ParentName ?? inquiry.ParentName;
+            inquiry.ParentPhone = request.ParentPhone ?? inquiry.ParentPhone;
+            inquiry.ParentEmail = request.ParentEmail ?? inquiry.ParentEmail;
+            inquiry.ChildName = request.ChildName ?? inquiry.ChildName;
+            inquiry.ClassApplying = request.ClassApplying ?? inquiry.ClassApplying;
+            inquiry.Message = request.Message ?? inquiry.Message;
+
+            // Resolve ParentId if authenticated parent and not explicitly supplied
+            if (!inquiry.ParentId.HasValue || inquiry.ParentId.Value == Guid.Empty)
+            {
+                if (currentUser?.Identity?.IsAuthenticated == true)
+                {
+                    var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    var parent = await _unitOfWork.GetRepository<Parent>().GetQueryable(p => p.UserId == currentUserId).FirstOrDefaultAsync();
+                    inquiry.ParentId = parent?.Id;
+                }
+                else
+                {
+                    inquiry.ParentId = null;
+                }
+            }
+
+            // Resolve StudentId
+            if (inquiry.StudentId.HasValue && inquiry.StudentId.Value == Guid.Empty)
+            {
+                inquiry.StudentId = null;
+            }
+
+            // Resolve RoutedToId (if not supplied, route to admissions staff or first staff member)
+            if (!inquiry.RoutedToId.HasValue || inquiry.RoutedToId.Value == Guid.Empty)
+            {
+                var admissionsStaff = await _unitOfWork.GetRepository<Staff>()
+                    .GetSingleByAsync(s => s.Department.Contains("Admin") || s.Title.Contains("Admissions") || s.Department.Contains("Academic"));
+                inquiry.RoutedToId = admissionsStaff?.Id;
+            }
+
             var timeline = new InquiryTimelineStep
             {
                 Id = Guid.NewGuid(),
@@ -457,28 +523,59 @@ namespace SFMA_API.Services.Implementation
 
             await _unitOfWork.GetRepository<Inquiry>().AddAsync(inquiry);
             await _unitOfWork.GetRepository<InquiryTimelineStep>().AddAsync(timeline);
+
+            // If an initial message was supplied, add it as the first InquiryMessage
+            if (!string.IsNullOrWhiteSpace(request.Message))
+            {
+                var initialMsg = new InquiryMessage
+                {
+                    Id = Guid.NewGuid(),
+                    InquiryId = inquiry.Id,
+                    SenderId = currentUser?.Identity?.IsAuthenticated == true ? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value : null,
+                    SenderName = !string.IsNullOrWhiteSpace(inquiry.ParentName) ? inquiry.ParentName : "Prospective Parent",
+                    SenderRole = inquiry.ParentId.HasValue ? "Parent" : "Prospect",
+                    Message = request.Message,
+                    SentAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _unitOfWork.GetRepository<InquiryMessage>().AddAsync(initialMsg);
+            }
+
             await _unitOfWork.SaveChangesAsync();
 
-            // Notify the routed staff member about the new inquiry
-            var routedStaff = await _unitOfWork.GetRepository<Staff>()
-                .GetSingleByAsync(s => s.Id == inquiry.RoutedToId,
-                    include: q => q.Include(s => s.User));
-
-            if (routedStaff?.User?.Email != null)
+            // Notify the routed staff member about the new inquiry if assigned
+            if (inquiry.RoutedToId.HasValue)
             {
-                var parentForNotif = await _unitOfWork.GetRepository<Parent>()
-                    .GetSingleByAsync(p => p.Id == inquiry.ParentId);
-                var studentForNotif = await _unitOfWork.GetRepository<Student>()
-                    .GetSingleByAsync(s => s.Id == inquiry.StudentId);
+                var routedStaff = await _unitOfWork.GetRepository<Staff>()
+                    .GetSingleByAsync(s => s.Id == inquiry.RoutedToId.Value,
+                        include: q => q.Include(s => s.User));
 
-                _ = Task.Run(() => _notificationService.SendInquiryCreatedAlertAsync(
-                    routedStaff.User.DisplayName,
-                    routedStaff.User.Email,
-                    inquiry.InquiryCode,
-                    inquiry.Category,
-                    inquiry.SubjectLine,
-                    parentForNotif?.FullName ?? "Guardian",
-                    studentForNotif?.FullName ?? "Scholar"));
+                if (routedStaff?.User?.Email != null)
+                {
+                    string parentForNotif = inquiry.ParentName ?? "Guardian";
+                    string studentForNotif = inquiry.ChildName ?? "Scholar";
+
+                    if (inquiry.ParentId.HasValue)
+                    {
+                        var p = await _unitOfWork.GetRepository<Parent>().GetSingleByAsync(x => x.Id == inquiry.ParentId.Value);
+                        if (p != null) parentForNotif = p.FullName;
+                    }
+
+                    if (inquiry.StudentId.HasValue)
+                    {
+                        var s = await _unitOfWork.GetRepository<Student>().GetSingleByAsync(x => x.Id == inquiry.StudentId.Value);
+                        if (s != null) studentForNotif = s.FullName;
+                    }
+
+                    _ = Task.Run(() => _notificationService.SendInquiryCreatedAlertAsync(
+                        routedStaff.User.DisplayName,
+                        routedStaff.User.Email,
+                        inquiry.InquiryCode,
+                        inquiry.Category,
+                        inquiry.SubjectLine,
+                        parentForNotif,
+                        studentForNotif));
+                }
             }
 
             return _mapper.Map<InquiryResponse>(inquiry);
@@ -490,13 +587,19 @@ namespace SFMA_API.Services.Implementation
             if (inquiry == null)
                 throw new KeyNotFoundException($"Inquiry with id {id} not found.");
 
-            var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+            var currentUserId = currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var senderRoles = currentUser?.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList() ?? new List<string>();
+            string senderDisplayName = currentUser?.FindFirst(ClaimTypes.Name)?.Value
+                ?? currentUser?.FindFirst("DisplayName")?.Value 
+                ?? (senderRoles.Contains("parent") ? "Parent" : "Staff");
 
             var message = new InquiryMessage
             {
                 Id = Guid.NewGuid(),
                 InquiryId = id,
-                SenderId = currentUserId,
+                SenderId = !string.IsNullOrEmpty(currentUserId) ? currentUserId : null,
+                SenderName = senderDisplayName,
+                SenderRole = senderRoles.FirstOrDefault() ?? "Staff",
                 Message = request.Message,
                 SentAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
@@ -511,11 +614,8 @@ namespace SFMA_API.Services.Implementation
             // Notify the other party about the new message
             var inquiryForNotif = await _unitOfWork.GetRepository<Inquiry>()
                 .GetSingleByAsync(i => i.Id == id,
-                    include: q => q.Include(i => i.Parent).Include(i => i.RoutedTo).ThenInclude(s => s.User));
+                    include: q => q.Include(i => i.Parent!).Include(i => i.RoutedTo!).ThenInclude(s => s!.User));
 
-            var senderRoles = currentUser.FindAll(System.Security.Claims.ClaimTypes.Role).Select(r => r.Value).ToList();
-            string senderDisplayName = currentUser.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
-                ?? currentUser.FindFirst("DisplayName")?.Value ?? "Staff";
             string preview = request.Message.Length > 120 ? request.Message[..120] + "…" : request.Message;
 
             if (senderRoles.Contains("parent") && inquiryForNotif?.RoutedTo?.User != null)
@@ -533,6 +633,16 @@ namespace SFMA_API.Services.Implementation
                 _ = Task.Run(() => _notificationService.SendInquiryReplyAlertAsync(
                     inquiryForNotif.Parent.FullName,
                     inquiryForNotif.Parent.Email,
+                    inquiryForNotif.InquiryCode,
+                    inquiryForNotif.SubjectLine,
+                    senderDisplayName,
+                    preview));
+            }
+            else if (!string.IsNullOrEmpty(inquiryForNotif?.ParentEmail))
+            {
+                _ = Task.Run(() => _notificationService.SendInquiryReplyAlertAsync(
+                    inquiryForNotif.ParentName ?? "Guardian",
+                    inquiryForNotif.ParentEmail,
                     inquiryForNotif.InquiryCode,
                     inquiryForNotif.SubjectLine,
                     senderDisplayName,
@@ -573,13 +683,22 @@ namespace SFMA_API.Services.Implementation
             // Notify the parent about the inquiry status change
             var inquiryWithParent = await _unitOfWork.GetRepository<Inquiry>()
                 .GetSingleByAsync(i => i.Id == id,
-                    include: q => q.Include(i => i.Parent));
+                    include: q => q.Include(i => i.Parent!));
 
             if (inquiryWithParent?.Parent != null)
             {
                 _ = Task.Run(() => _notificationService.SendInquiryStatusChangedAlertAsync(
                     inquiryWithParent.Parent.FullName,
                     inquiryWithParent.Parent.Email,
+                    inquiryWithParent.InquiryCode,
+                    inquiryWithParent.SubjectLine,
+                    request.Status.ToString()));
+            }
+            else if (!string.IsNullOrEmpty(inquiryWithParent?.ParentEmail))
+            {
+                _ = Task.Run(() => _notificationService.SendInquiryStatusChangedAlertAsync(
+                    inquiryWithParent.ParentName ?? "Guardian",
+                    inquiryWithParent.ParentEmail,
                     inquiryWithParent.InquiryCode,
                     inquiryWithParent.SubjectLine,
                     request.Status.ToString()));

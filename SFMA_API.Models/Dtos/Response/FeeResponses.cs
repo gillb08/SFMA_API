@@ -1,10 +1,10 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
 namespace SFMA_API.Models.Dtos.Response
 {
-public class FeeItemResponse
+    public class FeeItemResponse
     {
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
@@ -12,7 +12,7 @@ public class FeeItemResponse
         public short SortOrder { get; set; }
     }
 
-public class FeeScheduleResponse
+    public class FeeScheduleResponse
     {
         public Guid Id { get; set; }
         public Guid AcademicTermId { get; set; }
@@ -21,7 +21,7 @@ public class FeeScheduleResponse
         public List<FeeItemResponse> FeeItems { get; set; } = new List<FeeItemResponse>();
     }
 
-public class FeeTransactionResponse
+    public class FeeTransactionResponse
     {
         public Guid Id { get; set; }
         public Guid StudentId { get; set; }
@@ -32,13 +32,15 @@ public class FeeTransactionResponse
         public DateTime PaymentDate { get; set; }
         public string PaymentMethod { get; set; } = string.Empty;
         public string? BankTellerRef { get; set; }
+        public string? BankName { get; set; }
+        public string? AttachmentFile { get; set; }
         public FeeTransactionStatus Status { get; set; }
         public string? VerifiedByName { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 
-public class StudentFeeSummaryResponse
+    public class StudentFeeSummaryResponse
     {
         public Guid StudentId { get; set; }
         public string StudentName { get; set; } = string.Empty;
@@ -48,7 +50,7 @@ public class StudentFeeSummaryResponse
         public List<FeeTransactionResponse> Transactions { get; set; } = new List<FeeTransactionResponse>();
     }
 
-public class ReceiptResponse
+    public class ReceiptResponse
     {
         public Guid Id { get; set; }
         public string ReceiptCode { get; set; } = string.Empty;
@@ -60,7 +62,7 @@ public class ReceiptResponse
         public string? PdfUrl { get; set; }
     }
 
-public class BankAccountResponse
+    public class BankAccountResponse
     {
         public Guid Id { get; set; }
         public string BankName { get; set; } = string.Empty;

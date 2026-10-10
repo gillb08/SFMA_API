@@ -85,7 +85,27 @@ namespace SFMA_API.Data.SeedData
                 if (createRes.Succeeded)
                 {
                     await userManager.AddToRoleAsync(adminUser, seed.AdminUser.Role);
+                    existingAdmin = adminUser;
                 }
+            }
+
+            // Ensure a corresponding Staff record exists for the Super Admin
+            if (existingAdmin != null && !await context.Staff.AnyAsync(s => s.UserId == existingAdmin.Id))
+            {
+                var adminStaff = new Staff
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = existingAdmin.Id,
+                    StaffCode = "STF-001",
+                    Department = "Administration",
+                    Title = "Proprietress / Super Admin",
+                    Phone = existingAdmin.PhoneNumber ?? "08037820733",
+                    JoinedDate = DateTime.UtcNow.Date,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await context.Staff.AddAsync(adminStaff);
+                await context.SaveChangesAsync();
             }
 
             // 3. Seed default Menus if none exist

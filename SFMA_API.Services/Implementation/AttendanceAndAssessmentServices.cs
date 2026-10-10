@@ -83,8 +83,18 @@ namespace SFMA_API.Services.Implementation
             var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId)
                 ?? await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => true); // fallback for admin
 
+            if (staff == null)
+            {
+                throw new InvalidOperationException("No staff account found to record attendance.");
+            }
+
             var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive)
                 ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
+
+            if (activeTerm == null)
+            {
+                throw new InvalidOperationException("No active academic term found to record attendance.");
+            }
 
             int updatedCount = 0;
             foreach (var item in request.Records)
@@ -101,9 +111,9 @@ namespace SFMA_API.Services.Implementation
                         Status = item.Status,
                         ArrivalTime = item.ArrivalTime,
                         Notes = item.Notes,
-                        RecordedById = staff?.Id ?? Guid.Empty,
+                        RecordedById = staff.Id,
                         Locked = false,
-                        AcademicTermId = activeTerm?.Id ?? Guid.Empty
+                        AcademicTermId = activeTerm.Id
                     };
                     await attendanceRepo.AddAsync(record);
                 }
@@ -149,7 +159,14 @@ namespace SFMA_API.Services.Implementation
             }
 
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User));
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User))
+                ?? await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => true);
+
+            if (staff == null)
+            {
+                throw new InvalidOperationException("No staff account found to authorize register unlocking.");
+            }
+
             var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
 
             // Record the actual role — do not fall back to a hardcoded role name that would corrupt the audit trail
@@ -160,7 +177,7 @@ namespace SFMA_API.Services.Implementation
                 Id = Guid.NewGuid(),
                 ClassSectionId = request.ClassId,
                 Date = request.Date.Date,
-                UnlockedById = staff?.Id ?? Guid.Empty,
+                UnlockedById = staff.Id,
                 RoleAtAction = supervisorRole,
                 Reason = request.Reason,
                 // Audit action label from constant — not an inline string
@@ -235,7 +252,7 @@ namespace SFMA_API.Services.Implementation
             if (!teacherId.HasValue || teacherId.Value == Guid.Empty)
             {
                 var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable().FirstOrDefaultAsync();
-                teacherId = staff?.Id ?? Guid.Empty;
+                teacherId = staff?.Id;
             }
 
             var count = await _unitOfWork.GetRepository<Inquiry>().GetQueryable().CountAsync();
@@ -243,12 +260,14 @@ namespace SFMA_API.Services.Implementation
             {
                 Id = Guid.NewGuid(),
                 InquiryCode = $"ABS-{(count + 1):D4}",
-                ParentId = parent?.Id ?? Guid.Empty,
+                ParentId = parent?.Id,
                 StudentId = student.Id,
+                ParentName = parent?.FullName ?? "Parent / Guardian",
+                ChildName = student.FullName,
                 // Inquiry category from constant — not an inline string
                 Category = AttendanceConstants.InquiryCategoryAbsence,
                 SubjectLine = $"Absence Notice for {student.FullName} on {request.Date:dd MMM yyyy}",
-                RoutedToId = teacherId.Value,
+                RoutedToId = teacherId.HasValue && teacherId.Value != Guid.Empty ? teacherId.Value : null,
                 Status = InquiryStatus.Open,
                 CreatedAt = DateTime.UtcNow
             };
@@ -345,6 +364,11 @@ namespace SFMA_API.Services.Implementation
             var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId)
                 ?? await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => true);
 
+            if (staff == null)
+            {
+                throw new InvalidOperationException("No staff account found to submit assessment scores.");
+            }
+
             var computedList = new List<ComputedScoreResponse>();
             int savedCount = 0;
 
@@ -388,7 +412,7 @@ namespace SFMA_API.Services.Implementation
                         Grade = grade,
                         Remark = item.Remark,
                         AcademicTermId = request.TermId,
-                        SubmittedById = staff?.Id ?? Guid.Empty,
+                        SubmittedById = staff.Id,
                         Status = AssessmentStatus.Draft
                     };
                     await assessmentRepo.AddAsync(record);

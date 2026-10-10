@@ -127,16 +127,23 @@ namespace SFMA_API.Services.Implementation
             var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive)
                 ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
 
+            if (activeTerm == null)
+            {
+                throw new InvalidOperationException("No active academic term found for fee transaction.");
+            }
+
             var transaction = new FeeTransaction
             {
                 Id = Guid.NewGuid(),
                 StudentId = request.StudentId,
-                AcademicTermId = request.AcademicTermId ?? activeTerm?.Id ?? Guid.Empty,
+                AcademicTermId = request.AcademicTermId ?? activeTerm.Id,
                 AmountPaid = request.Amount,
                 PaymentDate = request.PaymentDate,
                 // PaymentMethod is now supplied by the caller — no longer hardcoded to "Bank Transfer"
                 PaymentMethod = request.PaymentMethod,
                 BankTellerRef = request.BankTellerRef,
+                BankName = request.BankName,
+                AttachmentFile = request.AttachmentFile,
                 Status = FeeTransactionStatus.PendingReview,
                 Notes = request.Notes,
                 CreatedAt = DateTime.UtcNow
@@ -163,7 +170,13 @@ namespace SFMA_API.Services.Implementation
             }
 
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User));
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User))
+                ?? await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => true);
+
+            if (staff == null)
+            {
+                throw new InvalidOperationException("No staff account found to verify fee transaction.");
+            }
 
             if (request.Status.Equals("cleared", StringComparison.OrdinalIgnoreCase))
                 transaction.Status = FeeTransactionStatus.Cleared;
@@ -172,7 +185,7 @@ namespace SFMA_API.Services.Implementation
             else
                 transaction.Status = FeeTransactionStatus.Verified;
 
-            transaction.VerifiedById = staff?.Id;
+            transaction.VerifiedById = staff.Id;
             if (request.Notes != null) transaction.Notes = request.Notes;
             transaction.UpdatedAt = DateTime.UtcNow;
 
@@ -194,7 +207,7 @@ namespace SFMA_API.Services.Implementation
                         ReceiptCode = receiptCode,
                         FeeTransactionId = transaction.Id,
                         IssuedAt = DateTime.UtcNow,
-                        VerifiedById = staff?.Id ?? Guid.Empty,
+                        VerifiedById = staff.Id,
                         PdfUrl = $"/receipts/{receiptCode}.pdf"
                     };
                     await _unitOfWork.GetRepository<Receipt>().AddAsync(receipt);
@@ -405,6 +418,11 @@ namespace SFMA_API.Services.Implementation
             var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId, include: q => q.Include(s => s.User))
                 ?? await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => true);
 
+            if (staff == null)
+            {
+                throw new InvalidOperationException("No staff account found to create requisition.");
+            }
+
             var totalReqs = await _unitOfWork.GetRepository<Requisition>().CountAsync();
             // Year is dynamic — not hardcoded to 2026
             string reqCode = $"REQ-{DateTime.UtcNow.Year}-{(totalReqs + 1):D4}";
@@ -418,7 +436,7 @@ namespace SFMA_API.Services.Implementation
                 Description = request.Description,
                 Amount = request.Amount,
                 Priority = request.Priority,
-                RequestedById = staff?.Id ?? Guid.Empty,
+                RequestedById = staff.Id,
                 Status = RequisitionStatus.Submitted,
                 CreatedAt = DateTime.UtcNow
             };

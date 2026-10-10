@@ -36,6 +36,8 @@ namespace SFMA_API.Models.Entities
         public DateTime PaymentDate { get; set; }
         public string PaymentMethod { get; set; } = "Bank Transfer";
         public string? BankTellerRef { get; set; }
+        public string? BankName { get; set; }
+        public string? AttachmentFile { get; set; }
         public FeeTransactionStatus Status { get; set; } = FeeTransactionStatus.PendingReview;
         public Guid? VerifiedById { get; set; }
         public string? Notes { get; set; }
