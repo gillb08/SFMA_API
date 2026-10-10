@@ -210,12 +210,16 @@ Helpdesk: {_emailOptions.ReplyToEmail}
             string staffCode,
             string department,
             string roleName,
-            string tempPassword)
+            string tempPassword,
+            string? verificationToken = null)
         {
             try
             {
                 string loginUrl = _emailOptions.PortalLoginUrl;
                 string schoolName = _emailOptions.FromName;
+                string verifyUrl = string.IsNullOrWhiteSpace(verificationToken)
+                    ? loginUrl
+                    : $"{_emailOptions.VerificationUrl}?email={Uri.EscapeDataString(staffEmail)}&token={Uri.EscapeDataString(verificationToken)}";
 
                 string emailSubject = $"Staff Account & Portal Access Profile - {staffName} ({staffCode})";
 
@@ -257,7 +261,7 @@ Helpdesk: {_emailOptions.ReplyToEmail}
     <div class=""content"">
       <div class=""salutation"">Welcome, {staffName}!</div>
       <div class=""intro"">
-        Your official staff account for <strong>{schoolName}</strong> has been provisioned. You can now access your staff portal dashboard using the credentials below:
+        Your official staff account for <strong>{schoolName}</strong> has been provisioned. You can now activate and access your staff portal dashboard using the credentials below:
       </div>
 
       <div class=""card"">
@@ -274,10 +278,10 @@ Helpdesk: {_emailOptions.ReplyToEmail}
 
       <!-- Step-by-Step Guide to Log In -->
       <div class=""guide-box"">
-        <h4>📋 STEP-BY-STEP GUIDE TO LOG IN</h4>
+        <h4>📋 STEP-BY-STEP GUIDE TO GET STARTED</h4>
         <div class=""step-item"">
           <span class=""step-num"">1</span>
-          <div><strong>Go to Staff Portal:</strong> Visit <a href=""{loginUrl}"" style=""color: #0030C2; font-weight: bold;"">{loginUrl}</a>.</div>
+          <div><strong>Verify &amp; Activate Account:</strong> Click the button below or visit <a href=""{verifyUrl}"" style=""color: #0030C2; font-weight: bold;"">Verify Staff Account</a> to automatically confirm your official email.</div>
         </div>
         <div class=""step-item"">
           <span class=""step-num"">2</span>
@@ -298,7 +302,7 @@ Helpdesk: {_emailOptions.ReplyToEmail}
       </div>
 
       <div class=""cta-container"">
-        <a href=""{loginUrl}"" class=""btn"" target=""_blank"">Sign In to Staff Portal</a>
+        <a href=""{verifyUrl}"" class=""btn"" target=""_blank"">Verify Email &amp; Activate Staff Account</a>
       </div>
     </div>
     <div class=""footer"">
@@ -320,12 +324,13 @@ Role: {roleName}
 Login Email: {staffEmail}
 Temporary Password: {tempPassword}
 
---- STEP-BY-STEP GUIDE TO LOG IN ---
-1. Visit the portal gateway: {loginUrl}
-2. Enter your email: {staffEmail}
-3. Enter your temporary password: {tempPassword}
-4. Change your password upon initial sign-in
-5. Access your faculty attendance, assessment broadsheets, and lesson tools
+--- STEP-BY-STEP GUIDE TO GET STARTED ---
+1. Verify Your Account: {verifyUrl}
+2. Staff Portal Gateway: {loginUrl}
+3. Enter your email: {staffEmail}
+4. Enter your temporary password: {tempPassword}
+5. Change your password upon initial sign-in
+6. Access your faculty attendance, assessment broadsheets, and lesson tools
 
 Academic Administration, St. Faith Model Academy
 ";

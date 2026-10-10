@@ -273,6 +273,25 @@ namespace SFMA_API.Services.Implementation
             return true;
         }
 
+        public async Task<bool> ConfirmEmail(ConfirmEmailRequest request)
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email.Trim().ToLower());
+            if (user == null)
+            {
+                throw new KeyNotFoundException("User not found with provided email address.");
+            }
+
+            var res = await _userManager.ConfirmEmailAsync(user, request.Token);
+            if (!res.Succeeded)
+            {
+                throw new InvalidOperationException(string.Join("\n", res.Errors.Select(e => e.Description)));
+            }
+
+            user.EmailConfirmed = true;
+            await _userManager.UpdateAsync(user);
+            return true;
+        }
+
         public async Task<LoggedInUserResponse> RefreshAccessToken(RefreshAccessTokenRequest request)
         {
             var principal = _jwtAuthenticator.GetPrincipalFromExpiredToken(request.AccessToken);
