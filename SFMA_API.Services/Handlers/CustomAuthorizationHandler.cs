@@ -78,6 +78,23 @@ namespace SFMA_API.Services.Handlers
 
             var normalizedEndpoint = endpointName.Trim().ToLowerInvariant();
 
+            // Core user session and baseline endpoints are accessible to all authenticated users
+            var commonAuthenticatedEndpoints = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "logout",
+                "get-current-user-profile",
+                "change-password",
+                "update-user-profile",
+                "get-active-term",
+                "get-all-terms"
+            };
+
+            if (commonAuthenticatedEndpoints.Contains(normalizedEndpoint))
+            {
+                context.Succeed(requirement);
+                return;
+            }
+
             // 4. Retrieve cached permissions for user
             var userPermissions = await _cacheService.GetUserPermissionsAsync(userId, async () =>
             {
