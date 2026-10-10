@@ -15,3 +15,4 @@ namespace SFMA_API.Models.Dtos
         public string Message { get; set; } = string.Empty;
     }
 }
+

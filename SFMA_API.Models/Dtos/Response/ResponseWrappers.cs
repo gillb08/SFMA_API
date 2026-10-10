@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 
 namespace SFMA_API.Models.Dtos.Response
 {
@@ -35,3 +35,4 @@ namespace SFMA_API.Models.Dtos.Response
         }
     }
 }
+
