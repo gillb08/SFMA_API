@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -17,6 +17,8 @@ public class StaffResponse
         public string Email { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public string Status { get; set; } = "Active";
+        public Guid? AssignedClassId { get; set; }
+        public string? AssignedClassName { get; set; }
     }
 
 public class CreateStaffResponse

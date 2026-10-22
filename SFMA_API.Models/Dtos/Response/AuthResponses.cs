@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -14,6 +14,8 @@ public class UserProfileResponse
         public string? PhoneNumber { get; set; }
         public string? Address { get; set; }
         public string PortalRedirect { get; set; } = string.Empty;
+        public Guid? AssignedClassId { get; set; }
+        public string? AssignedClassName { get; set; }
     }
 
 public class LoggedInUserResponse

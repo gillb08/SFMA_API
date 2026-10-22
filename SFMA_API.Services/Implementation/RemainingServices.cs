@@ -45,10 +45,12 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<SchemeOfWorkResponse> CreateSchemeOfWork(CreateSchemeOfWorkRequest request)
         {
+            await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId, null, request.AcademicTermId);
+
             var entry = _mapper.Map<SchemeOfWorkEntry>(request);
             entry.Id = Guid.NewGuid();
             entry.VettedByHos = false;
-            entry.Status = SchemeStatus.Upcoming;
+            entry.Status = request.Status ?? SchemeStatus.Upcoming;
             entry.CreatedAt = DateTime.UtcNow;
 
             await _unitOfWork.GetRepository<SchemeOfWorkEntry>().AddAsync(entry);
@@ -63,7 +65,11 @@ namespace SFMA_API.Services.Implementation
             if (entry == null)
                 throw new KeyNotFoundException($"Scheme of work entry with id {id} not found.");
 
-            _mapper.Map(request, entry);
+            if (!string.IsNullOrWhiteSpace(request.Topic)) entry.Topic = request.Topic.Trim();
+            if (request.LearningObjectives != null) entry.LearningObjectives = request.LearningObjectives;
+            if (request.MaterialsName != null) entry.MaterialsName = request.MaterialsName;
+            if (request.MaterialsUrl != null) entry.MaterialsUrl = request.MaterialsUrl;
+            if (request.Status.HasValue) entry.Status = request.Status.Value;
             entry.UpdatedAt = DateTime.UtcNow;
 
             _unitOfWork.GetRepository<SchemeOfWorkEntry>().Update(entry);
@@ -91,7 +97,7 @@ namespace SFMA_API.Services.Implementation
         {
             var slots = await _unitOfWork.GetRepository<TimetableSlot>()
                 .GetQueryable(t => t.ClassSectionId == classId)
-                .Include(t => t.Teacher)
+                .Include(t => t.Teacher).ThenInclude(s => s!.User)
                 .OrderBy(t => t.DayOfWeek)
                 .ThenBy(t => t.PeriodNumber)
                 .ToListAsync();
@@ -101,6 +107,7 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> UpdateTimetable(Guid classId, UpdateTimetableRequest request)
         {
+            var classSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, classId);
             var repo = _unitOfWork.GetRepository<TimetableSlot>();
             var existingSlots = await repo.GetQueryable(t => t.ClassSectionId == classId).ToListAsync();
 
@@ -113,12 +120,18 @@ namespace SFMA_API.Services.Implementation
             {
                 foreach (var slotReq in request.Slots)
                 {
+                    Guid? resolvedTeacherId = slotReq.IsBreak
+                        ? null
+                        : (slotReq.TeacherId.HasValue && slotReq.TeacherId.Value != Guid.Empty
+                            ? slotReq.TeacherId
+                            : classSection.HomeroomTeacherId);
+
                     var slot = new TimetableSlot
                     {
                         Id = Guid.NewGuid(),
                         ClassSectionId = classId,
                         Subject = slotReq.Subject,
-                        TeacherId = slotReq.TeacherId,
+                        TeacherId = resolvedTeacherId,
                         DayOfWeek = slotReq.DayOfWeek,
                         PeriodNumber = slotReq.PeriodNumber,
                         StartTime = slotReq.StartTime,
@@ -153,8 +166,8 @@ namespace SFMA_API.Services.Implementation
         public async Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(LessonNoteStatus? status, ClaimsPrincipal currentUser)
         {
             var query = _unitOfWork.GetRepository<LessonNote>().GetQueryable()
-                .Include(l => l.Staff)
-                .Include(l => l.ReviewedBy)
+                .Include(l => l.Staff).ThenInclude(s => s.User)
+                .Include(l => l.ReviewedBy).ThenInclude(r => r!.User)
                 .AsQueryable();
 
             if (status.HasValue)
@@ -184,8 +197,11 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<LessonNoteResponse> CreateLessonNote(CreateLessonNoteRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
+            await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId);
+
             var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+            var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).Include(s => s.User).FirstOrDefaultAsync();
 
             var count = await _unitOfWork.GetRepository<LessonNote>().GetQueryable().CountAsync();
             var note = _mapper.Map<LessonNote>(request);
@@ -199,7 +215,9 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.GetRepository<LessonNote>().AddAsync(note);
             await _unitOfWork.SaveChangesAsync();
 
-            return _mapper.Map<LessonNoteResponse>(note);
+            var response = _mapper.Map<LessonNoteResponse>(note);
+            if (staff?.User != null) response.StaffName = staff.User.DisplayName;
+            return response;
         }
 
         public async Task<LessonNoteResponse> ReviewLessonNote(Guid id, ReviewLessonNoteRequest request, ClaimsPrincipal currentUser)
@@ -245,7 +263,7 @@ namespace SFMA_API.Services.Implementation
         public async Task<IEnumerable<AssignmentResponse>> GetAssignments(Guid classSectionId, ClaimsPrincipal currentUser)
         {
             var assignments = await _unitOfWork.GetRepository<Assignment>().GetQueryable(a => a.ClassSectionId == classSectionId)
-                .Include(a => a.Staff)
+                .Include(a => a.Staff).ThenInclude(s => s.User)
                 .Include(a => a.Submissions)
                 .OrderByDescending(a => a.CreatedAt)
                 .ToListAsync();
@@ -255,8 +273,11 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<AssignmentResponse> CreateAssignment(CreateAssignmentRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
+            await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId);
+
             var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+            var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).Include(s => s.User).FirstOrDefaultAsync();
 
             var count = await _unitOfWork.GetRepository<Assignment>().GetQueryable().CountAsync();
             var assignment = _mapper.Map<Assignment>(request);
@@ -269,7 +290,9 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.GetRepository<Assignment>().AddAsync(assignment);
             await _unitOfWork.SaveChangesAsync();
 
-            return _mapper.Map<AssignmentResponse>(assignment);
+            var response = _mapper.Map<AssignmentResponse>(assignment);
+            if (staff?.User != null) response.StaffName = staff.User.DisplayName;
+            return response;
         }
 
         public async Task<AssignmentResponse> UpdateAssignment(Guid id, UpdateAssignmentRequest request)
@@ -736,6 +759,76 @@ namespace SFMA_API.Services.Implementation
             return responses;
         }
 
+        public async Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            var classSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId, request.ClassName, request.AcademicTermId);
+            Guid termId = request.AcademicTermId.HasValue && request.AcademicTermId.Value != Guid.Empty
+                ? request.AcademicTermId.Value
+                : classSection.AcademicTermId;
+
+            var repo = _unitOfWork.GetRepository<SchoolRequirement>();
+            SchoolRequirement? item = null;
+
+            if (request.Id.HasValue && request.Id.Value != Guid.Empty)
+            {
+                item = await repo.GetByIdAsync(request.Id.Value);
+                if (item == null)
+                    throw new KeyNotFoundException("School requirement not found.");
+            }
+
+            if (item == null)
+            {
+                var count = await repo.CountAsync();
+                item = new SchoolRequirement
+                {
+                    Id = Guid.NewGuid(),
+                    ItemCode = $"REQ-ITEM-{(count + 1):D4}",
+                    ClassSectionId = classSection.Id,
+                    AcademicTermId = termId,
+                    Category = request.Category.Trim(),
+                    Title = request.Title.Trim(),
+                    Author = request.Author?.Trim(),
+                    Publisher = request.Publisher?.Trim(),
+                    IsRequired = request.IsRequired,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await repo.AddAsync(item);
+            }
+            else
+            {
+                item.ClassSectionId = classSection.Id;
+                item.AcademicTermId = termId;
+                item.Category = request.Category.Trim();
+                item.Title = request.Title.Trim();
+                item.Author = request.Author?.Trim();
+                item.Publisher = request.Publisher?.Trim();
+                item.IsRequired = request.IsRequired;
+                item.UpdatedAt = DateTime.UtcNow;
+                await repo.UpdateAsync(item);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            return _mapper.Map<SchoolRequirementResponse>(item);
+        }
+
+        public async Task<bool> DeleteSchoolRequirement(Guid id)
+        {
+            var repo = _unitOfWork.GetRepository<SchoolRequirement>();
+            var item = await repo.GetByIdAsync(id);
+            if (item == null)
+                throw new KeyNotFoundException("School requirement not found.");
+
+            var statusRepo = _unitOfWork.GetRepository<RequirementStatus>();
+            await statusRepo.DeleteRangeAsync(s => s.RequirementId == id);
+            repo.Delete(item);
+            await _unitOfWork.SaveChangesAsync();
+            return true;
+        }
+
         public async Task<bool> ToggleRequirementStatus(Guid requirementId, ToggleRequirementStatusRequest request, ClaimsPrincipal currentUser)
         {
             var statusRepo = _unitOfWork.GetRepository<RequirementStatus>();
@@ -894,7 +987,8 @@ namespace SFMA_API.Services.Implementation
         public async Task<IEnumerable<BudgetItemProgress>> GetBudgetProgress()
         {
             var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>()
-                .GetSingleByAsync(t => t.IsActive);
+                .GetSingleByAsync(t => t.IsActive)
+                ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
 
             var requisitions = await _unitOfWork.GetRepository<Requisition>().GetQueryable().ToListAsync();
 
@@ -905,19 +999,25 @@ namespace SFMA_API.Services.Implementation
                     .ToListAsync()
                 : new List<DepartmentBudget>();
 
-            var groups = requisitions.GroupBy(r => r.Department);
+            var allDepartments = departmentBudgets.Select(b => b.Department)
+                .Union(requisitions.Select(r => r.Department), StringComparer.OrdinalIgnoreCase)
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .ToList();
+
             var progress = new List<BudgetItemProgress>();
 
-            foreach (var g in groups)
+            foreach (var dept in allDepartments)
             {
-                // Budget is read from the DepartmentBudget table — no longer hardcoded as 500,000
-                var budgetRecord = departmentBudgets.FirstOrDefault(b => b.Department == g.Key);
+                var budgetRecord = departmentBudgets.FirstOrDefault(b => b.Department.Equals(dept, StringComparison.OrdinalIgnoreCase));
                 decimal budget = budgetRecord?.AllocatedAmount ?? _schoolSettings.DefaultDepartmentBudget;
 
-                var actual = g.Where(r => r.Status == RequisitionStatus.Approved || r.Status == RequisitionStatus.Disbursed).Sum(r => r.Amount);
+                var actual = requisitions
+                    .Where(r => r.Department.Equals(dept, StringComparison.OrdinalIgnoreCase) && (r.Status == RequisitionStatus.Approved || r.Status == RequisitionStatus.Disbursed))
+                    .Sum(r => r.Amount);
+
                 progress.Add(new BudgetItemProgress
                 {
-                    Category = g.Key,
+                    Category = budgetRecord?.Department ?? dept,
                     BudgetedAmount = budget,
                     ActualAmount = actual
                 });

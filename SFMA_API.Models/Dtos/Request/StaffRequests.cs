@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Dtos.Response;
+using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
@@ -13,6 +13,8 @@ public class CreateStaffRequest
         public string RoleKey { get; set; } = "teacher";
         public string Department { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public Guid? AssignedClassId { get; set; }
+        public string? AssignedClassName { get; set; }
     }
 
 public class UpdateStaffRequest
@@ -21,6 +23,8 @@ public class UpdateStaffRequest
         public string Title { get; set; } = string.Empty;
         public string? RoleKey { get; set; }
         public string? Phone { get; set; }
+        public Guid? AssignedClassId { get; set; }
+        public string? AssignedClassName { get; set; }
     }
 
 public class UpdateStaffStatusRequest

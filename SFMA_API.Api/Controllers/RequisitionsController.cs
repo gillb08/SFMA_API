@@ -67,6 +67,15 @@ namespace SFMA_API.Api.Controllers
             var result = await _requisitionService.QueryRequisition(id, request, HttpContext.User);
             return Ok(result);
         }
+
+        [HttpPost("budgets", Name = "upsert-department-budget")]
+        [SwaggerOperation(Summary = "Set or update approved term budget allocation for a department")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> UpsertDepartmentBudget([FromBody] UpsertDepartmentBudgetRequest request)
+        {
+            var result = await _requisitionService.UpsertDepartmentBudget(request);
+            return Ok(result);
+        }
     }
 }
 

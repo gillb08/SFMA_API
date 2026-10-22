@@ -47,13 +47,13 @@ namespace SFMA_API.Services.Implementation
         public async Task<PagedResponse<StudentResponse>> GetAllStudents(Guid? classId, StudentStatus? status, RequestParameters parameters, ClaimsPrincipal currentUser)
         {
             var query = _unitOfWork.GetRepository<Student>().GetQueryable(
-                include: q => q.Include(s => s.ClassSection)
+                include: q => q.Include(s => s.ClassSection).ThenInclude(c => c.HomeroomTeacher).ThenInclude(t => t!.User)
                                .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent));
 
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
 
-            if (roles.Contains("teacher") && !roles.Contains("super_admin") && !roles.Contains("academic_admin"))
+            if (roles.Contains("teacher") && !roles.Contains("super_admin") && !roles.Contains("academic_admin") && !roles.Contains("academic_head"))
             {
                 var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
                 if (staff != null)
@@ -106,7 +106,7 @@ namespace SFMA_API.Services.Implementation
         {
             var student = await _unitOfWork.GetRepository<Student>().GetSingleByAsync(
                 s => s.Id == id,
-                include: q => q.Include(s => s.ClassSection)
+                include: q => q.Include(s => s.ClassSection).ThenInclude(c => c.HomeroomTeacher).ThenInclude(t => t!.User)
                                .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent));
 
             if (student == null) return null;
@@ -215,6 +215,9 @@ namespace SFMA_API.Services.Implementation
             };
             await parentRepo.AddAsync(parent);
 
+            // Ensure target ClassSection exists
+            var classSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassAdmitted, request.ClassName);
+
             // Parse Gender
             Enum.TryParse<Gender>(request.Gender, true, out var parsedGender);
 
@@ -227,7 +230,7 @@ namespace SFMA_API.Services.Implementation
                 FullName = request.FullName,
                 Gender = parsedGender,
                 DateOfBirth = request.Dob,
-                ClassSectionId = request.ClassAdmitted,
+                ClassSectionId = classSection.Id,
                 Status = StudentStatus.Admitted,
                 AdmittedAt = DateTime.UtcNow
             };
@@ -259,19 +262,20 @@ namespace SFMA_API.Services.Implementation
             await _unitOfWork.SaveChangesAsync();
 
             var studentResponse = _mapper.Map<StudentResponse>(student);
+            studentResponse.ClassSectionName = classSection.Name;
             var parentAcc = _mapper.Map<UserProfileResponse>(parentUser);
             parentAcc.Role = "parent";
 
             var studentAcc = _mapper.Map<UserProfileResponse>(studentUser);
             studentAcc.Role = "student";
+            studentAcc.AssignedClassId = classSection.Id;
+            studentAcc.AssignedClassName = classSection.Name;
 
             var cardResponse = _mapper.Map<IdCardResponse>(idCard);
             cardResponse.StudentName = student.FullName;
             cardResponse.StudentCode = student.StudentCode;
 
-            // Retrieve class section name for email template if available
-            var classSection = await _unitOfWork.GetRepository<ClassSection>().GetByIdAsync(request.ClassAdmitted);
-            string className = classSection?.Name ?? "Admitted Class";
+            string className = classSection.Name;
 
             // Fire and forget / background dispatch notification to parent & scholar
             _ = Task.Run(() => _notificationService.SendParentAdmissionCredentialsAsync(
@@ -296,7 +300,11 @@ namespace SFMA_API.Services.Implementation
         public async Task<StudentResponse> UpdateBioData(Guid id, UpdateStudentBioDataRequest request)
         {
             var studentRepo = _unitOfWork.GetRepository<Student>();
-            var student = await studentRepo.GetSingleByAsync(s => s.Id == id, include: q => q.Include(s => s.User).Include(s => s.StudentParents).ThenInclude(sp => sp.Parent));
+            var student = await studentRepo.GetSingleByAsync(
+                s => s.Id == id,
+                include: q => q.Include(s => s.User)
+                               .Include(s => s.ClassSection).ThenInclude(c => c.HomeroomTeacher).ThenInclude(t => t!.User)
+                               .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent));
             if (student == null)
             {
                 throw new KeyNotFoundException("Student not found");
@@ -304,8 +312,8 @@ namespace SFMA_API.Services.Implementation
 
             if (!string.IsNullOrWhiteSpace(request.FullName))
             {
-                student.FullName = request.FullName;
-                student.User.DisplayName = request.FullName;
+                student.FullName = request.FullName.Trim();
+                student.User.DisplayName = request.FullName.Trim();
                 await _userManager.UpdateAsync(student.User);
             }
 
@@ -322,6 +330,41 @@ namespace SFMA_API.Services.Implementation
             if (!string.IsNullOrWhiteSpace(request.PhotoUrl))
             {
                 student.PhotoUrl = request.PhotoUrl;
+            }
+
+            if (request.ClassSectionId.HasValue && request.ClassSectionId.Value != Guid.Empty)
+            {
+                var targetClass = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId.Value, request.ClassName);
+                student.ClassSectionId = targetClass.Id;
+                student.ClassSection = targetClass;
+            }
+
+            var primaryParent = student.StudentParents.FirstOrDefault(sp => sp.IsPrimary)?.Parent
+                ?? student.StudentParents.FirstOrDefault()?.Parent;
+
+            if (primaryParent != null)
+            {
+                bool parentUpdated = false;
+                if (!string.IsNullOrWhiteSpace(request.GuardianName))
+                {
+                    primaryParent.FullName = request.GuardianName.Trim();
+                    parentUpdated = true;
+                }
+                if (!string.IsNullOrWhiteSpace(request.GuardianPhone))
+                {
+                    primaryParent.Phone = request.GuardianPhone.Trim();
+                    parentUpdated = true;
+                }
+                if (!string.IsNullOrWhiteSpace(request.Address))
+                {
+                    primaryParent.Address = request.Address.Trim();
+                    parentUpdated = true;
+                }
+                if (parentUpdated)
+                {
+                    primaryParent.UpdatedAt = DateTime.UtcNow;
+                    await _unitOfWork.GetRepository<Parent>().UpdateAsync(primaryParent);
+                }
             }
 
             student.UpdatedAt = DateTime.UtcNow;
