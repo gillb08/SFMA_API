@@ -30,6 +30,24 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
+        [HttpPost("", Name = "upsert-school-requirement")]
+        [SwaggerOperation(Summary = "Create or update a school textbook or material requirement for a class")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> UpsertSchoolRequirement([FromBody] UpsertSchoolRequirementRequest request)
+        {
+            var result = await _service.UpsertSchoolRequirement(request);
+            return Ok(result);
+        }
+
+        [HttpDelete("{id:guid}", Name = "delete-school-requirement")]
+        [SwaggerOperation(Summary = "Delete a school requirement item")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> DeleteSchoolRequirement(Guid id)
+        {
+            var result = await _service.DeleteSchoolRequirement(id);
+            return Ok(result);
+        }
+
         [HttpPost("{id:guid}/status", Name = "toggle-requirement-status")]
         [SwaggerOperation(Summary = "Toggle acquired status of requirement item for student")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]

@@ -179,7 +179,7 @@ namespace SFMA_API.Data.SeedData
                         Route = "/fees",
                         Order = 6,
                         Active = true,
-                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "post-fee-teller", "get-student-receipts" })
+                        ClaimsJson = JsonSerializer.Serialize(new List<string> { "get-fee-schedule", "upsert-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "post-fee-teller", "get-student-receipts" })
                     },
                     new Menu
                     {
@@ -235,68 +235,6 @@ namespace SFMA_API.Data.SeedData
 
                 await context.Menus.AddRangeAsync(defaultMenus);
                 await context.SaveChangesAsync();
-            }
-
-            // 4. Seed default academic term if none exists
-            if (!await context.AcademicTerms.AnyAsync())
-            {
-                var defaultTerm = new AcademicTerm
-                {
-                    Id = Guid.NewGuid(),
-                    SessionName = "2025/2026",
-                    TermNumber = 1,
-                    StartDate = DateTime.UtcNow.Date,
-                    EndDate = DateTime.UtcNow.Date.AddMonths(3),
-                    IsActive = true,
-                    Cat1Deadline = DateTime.UtcNow.AddMonths(1),
-                    Cat2Deadline = DateTime.UtcNow.AddMonths(2),
-                    ExamDeadline = DateTime.UtcNow.AddMonths(3)
-                };
-                await context.AcademicTerms.AddAsync(defaultTerm);
-                await context.SaveChangesAsync();
-            }
-
-            // 5. Seed default bank account if none exists
-            if (!await context.BankAccounts.AnyAsync())
-            {
-                var defaultAccount = new BankAccount
-                {
-                    Id = Guid.NewGuid(),
-                    BankName = "First Bank Nigeria",
-                    AccountName = "St. Faith Model Academy",
-                    AccountNumber = "1234567890",
-                    SortCode = "011",
-                    IsActive = true
-                };
-                await context.BankAccounts.AddAsync(defaultAccount);
-                await context.SaveChangesAsync();
-            }
-
-            // 6. Seed default Class Sections if none exist
-            if (!await context.ClassSections.AnyAsync())
-            {
-                var activeTerm = await context.AcademicTerms.FirstOrDefaultAsync(t => t.IsActive) 
-                                 ?? await context.AcademicTerms.FirstOrDefaultAsync();
-
-                if (activeTerm != null)
-                {
-                    var sections = new List<ClassSection>
-                    {
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), Name = "KG 1", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000002"), Name = "KG 2", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000003"), Name = "Pre-Nursery", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000004"), Name = "Nursery 1", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000005"), Name = "Nursery 2", Division = "Early Years", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000006"), Name = "Basic 1", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000007"), Name = "Basic 2", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000008"), Name = "Basic 3", Division = "Junior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000009"), Name = "Basic 4 (Emerald)", Division = "Senior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000010"), Name = "Basic 5", Division = "Senior Basic", AcademicTermId = activeTerm.Id },
-                        new ClassSection { Id = Guid.Parse("00000000-0000-0000-0000-000000000011"), Name = "Basic 6", Division = "Senior Basic", AcademicTermId = activeTerm.Id }
-                    };
-                    await context.ClassSections.AddRangeAsync(sections);
-                    await context.SaveChangesAsync();
-                }
             }
         }
     }

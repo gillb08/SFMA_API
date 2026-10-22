@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -14,6 +14,7 @@ public class StudentResponse
         public DateTime DateOfBirth { get; set; }
         public Guid ClassSectionId { get; set; }
         public string ClassSectionName { get; set; } = string.Empty;
+        public string? ClassTeacherName { get; set; }
         public string? PhotoUrl { get; set; }
         public StudentStatus Status { get; set; }
         public DateTime AdmittedAt { get; set; }

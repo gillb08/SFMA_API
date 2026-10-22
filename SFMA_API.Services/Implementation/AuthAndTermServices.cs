@@ -80,6 +80,7 @@ namespace SFMA_API.Services.Implementation
 
             // Portal route resolved from configuration — no hardcoded paths in code
             string portalRedirect = _schoolSettings.GetPortalRoute(primaryRole);
+            var (assignedClassId, assignedClassName) = await ResolveUserClassAssignmentAsync(user.Id);
 
             var userProfile = new UserProfileResponse
             {
@@ -88,7 +89,10 @@ namespace SFMA_API.Services.Implementation
                 DisplayName = user.DisplayName,
                 Role = primaryRole,
                 AvatarUrl = user.AvatarUrl,
-                PortalRedirect = portalRedirect
+                PhoneNumber = user.PhoneNumber,
+                PortalRedirect = portalRedirect,
+                AssignedClassId = assignedClassId,
+                AssignedClassName = assignedClassName
             };
 
             var (menuItems, permissions) = await GetUserNavigationAndPermissions(user.Id, roles);
@@ -101,6 +105,29 @@ namespace SFMA_API.Services.Implementation
                 MenuItems = menuItems,
                 Permissions = permissions
             };
+        }
+
+        private async Task<(Guid? ClassId, string? ClassName)> ResolveUserClassAssignmentAsync(string userId)
+        {
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
+            if (staff != null)
+            {
+                var assignedClass = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
+                if (assignedClass != null)
+                {
+                    return (assignedClass.Id, assignedClass.Name);
+                }
+            }
+
+            var student = await _unitOfWork.GetRepository<Student>().GetSingleByAsync(
+                s => s.UserId == userId,
+                include: q => q.Include(st => st.ClassSection));
+            if (student != null)
+            {
+                return (student.ClassSectionId, student.ClassSection?.Name);
+            }
+
+            return (null, null);
         }
 
         private async Task<(List<string> MenuItems, List<string> Permissions)> GetUserNavigationAndPermissions(string userId, IList<string> roles)
@@ -189,6 +216,8 @@ namespace SFMA_API.Services.Implementation
                 phone = string.IsNullOrWhiteSpace(phone) ? parent.Phone : phone;
             }
 
+            var (assignedClassId, assignedClassName) = await ResolveUserClassAssignmentAsync(userId);
+
             return new UserProfileResponse
             {
                 Id = user.Id,
@@ -198,7 +227,9 @@ namespace SFMA_API.Services.Implementation
                 AvatarUrl = user.AvatarUrl,
                 PhoneNumber = phone,
                 Address = address,
-                PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole)
+                PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole),
+                AssignedClassId = assignedClassId,
+                AssignedClassName = assignedClassName
             };
         }
 
@@ -330,6 +361,7 @@ namespace SFMA_API.Services.Implementation
                 ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
             var (menuItems, permissions) = await GetUserNavigationAndPermissions(user.Id, roles);
+            var (assignedClassId, assignedClassName) = await ResolveUserClassAssignmentAsync(user.Id);
 
             return new LoggedInUserResponse
             {
@@ -342,7 +374,10 @@ namespace SFMA_API.Services.Implementation
                     DisplayName = user.DisplayName,
                     Role = primaryRole,
                     AvatarUrl = user.AvatarUrl,
-                    PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole)
+                    PhoneNumber = user.PhoneNumber,
+                    PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole),
+                    AssignedClassId = assignedClassId,
+                    AssignedClassName = assignedClassName
                 },
                 MenuItems = menuItems,
                 Permissions = permissions
@@ -373,13 +408,73 @@ namespace SFMA_API.Services.Implementation
             return term != null ? _mapper.Map<TermResponse>(term) : null;
         }
 
+        public async Task<TermResponse> CreateTerm(CreateTermRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            string normalizedSession = request.SessionName.Trim();
+            var termRepo = _unitOfWork.GetRepository<AcademicTerm>();
+
+            var existing = await termRepo.GetSingleByAsync(
+                t => t.SessionName.ToLower() == normalizedSession.ToLower() && t.TermNumber == request.TermNumber);
+
+            if (existing != null)
+            {
+                throw new InvalidOperationException($"Term {request.TermNumber} for academic session '{normalizedSession}' already exists.");
+            }
+
+            if (request.IsActive)
+            {
+                var otherTerms = await termRepo.GetByAsync(t => t.IsActive);
+                foreach (var other in otherTerms)
+                {
+                    other.IsActive = false;
+                    other.UpdatedAt = DateTime.UtcNow;
+                    await termRepo.UpdateAsync(other);
+                }
+            }
+
+            var newTerm = new AcademicTerm
+            {
+                Id = Guid.NewGuid(),
+                SessionName = normalizedSession,
+                TermNumber = request.TermNumber,
+                StartDate = request.StartDate,
+                EndDate = request.EndDate,
+                IsActive = request.IsActive,
+                Cat1Deadline = request.Cat1Deadline,
+                Cat2Deadline = request.Cat2Deadline,
+                ExamDeadline = request.ExamDeadline,
+                Active = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await termRepo.AddAsync(newTerm);
+            await _unitOfWork.SaveChangesAsync();
+
+            return _mapper.Map<TermResponse>(newTerm);
+        }
+
         public async Task<TermResponse> UpdateTerm(Guid id, UpdateTermRequest request)
         {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            string normalizedSession = request.SessionName.Trim();
             var termRepo = _unitOfWork.GetRepository<AcademicTerm>();
             var term = await termRepo.GetByIdAsync(id);
             if (term == null)
             {
                 throw new KeyNotFoundException("Academic term not found");
+            }
+
+            var collision = await termRepo.GetSingleByAsync(
+                t => t.Id != id && t.SessionName.ToLower() == normalizedSession.ToLower() && t.TermNumber == request.TermNumber);
+
+            if (collision != null)
+            {
+                throw new InvalidOperationException($"Term {request.TermNumber} for academic session '{normalizedSession}' already exists.");
             }
 
             if (request.IsActive)
@@ -388,11 +483,12 @@ namespace SFMA_API.Services.Implementation
                 foreach (var other in otherTerms)
                 {
                     other.IsActive = false;
+                    other.UpdatedAt = DateTime.UtcNow;
                     await termRepo.UpdateAsync(other);
                 }
             }
 
-            term.SessionName = request.SessionName;
+            term.SessionName = normalizedSession;
             term.TermNumber = request.TermNumber;
             term.StartDate = request.StartDate;
             term.EndDate = request.EndDate;

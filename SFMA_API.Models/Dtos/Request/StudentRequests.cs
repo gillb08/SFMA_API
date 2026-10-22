@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Dtos.Response;
+using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
@@ -17,6 +17,7 @@ public class AdmitStudentRequest
         public string Address { get; set; } = string.Empty;
         /// <summary>Relationship of the guardian to the student e.g. Father, Mother, Guardian, Uncle</summary>
         public string GuardianRelationship { get; set; } = "Guardian";
+        public string? ClassName { get; set; }
     }
 
 public class UpdateStudentBioDataRequest
@@ -26,6 +27,10 @@ public class UpdateStudentBioDataRequest
         public DateTime? DateOfBirth { get; set; }
         public string? PhotoUrl { get; set; }
         public string? Address { get; set; }
+        public Guid? ClassSectionId { get; set; }
+        public string? ClassName { get; set; }
+        public string? GuardianName { get; set; }
+        public string? GuardianPhone { get; set; }
     }
 
 public class BatchPrintRequest

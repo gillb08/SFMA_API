@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Dtos.Response;
+using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
@@ -22,5 +22,12 @@ public class ApproveRequisitionRequest
 public class QueryRequisitionRequest
     {
         public string Reason { get; set; } = string.Empty;
+    }
+
+public class UpsertDepartmentBudgetRequest
+    {
+        public string Department { get; set; } = string.Empty;
+        public Guid? AcademicTermId { get; set; }
+        public decimal AllocatedAmount { get; set; }
     }
 }

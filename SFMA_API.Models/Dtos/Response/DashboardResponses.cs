@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -14,28 +14,28 @@ public class ExecutiveDashboardResponse
 
 public class EarlyYearsSnapshot
     {
-        public string Focus { get; set; } = "Early Literacy & Motor Skills";
-        public decimal MilestoneAttainmentRate { get; set; } = 96.2m;
-        public int EnrolledPupils { get; set; } = 78;
+        public string Focus { get; set; } = string.Empty;
+        public decimal MilestoneAttainmentRate { get; set; }
+        public int EnrolledPupils { get; set; }
     }
 
 public class JuniorBasicSnapshot
     {
-        public string Focus { get; set; } = "Cognitive & Terminal Assessment Broadsheet";
-        public decimal AverageScore { get; set; } = 85.7m;
-        public decimal PassRate { get; set; } = 100m;
-        public int EvaluatedScholars { get; set; } = 6;
+        public string Focus { get; set; } = string.Empty;
+        public decimal AverageScore { get; set; }
+        public decimal PassRate { get; set; }
+        public int EvaluatedScholars { get; set; }
     }
 
 public class QualityAssuranceSnapshot
     {
-        public decimal SchemesVettedRate { get; set; } = 100m;
-        public string Standing { get; set; } = "Approved for Terminal Examinations";
+        public decimal SchemesVettedRate { get; set; }
+        public string Standing { get; set; } = string.Empty;
     }
 
 public class AcademicSnapshotResponse
     {
-        public string Term { get; set; } = "Term 2 2025/2026";
+        public string Term { get; set; } = string.Empty;
         public EarlyYearsSnapshot EarlyYears { get; set; } = new EarlyYearsSnapshot();
         public JuniorBasicSnapshot JuniorBasic { get; set; } = new JuniorBasicSnapshot();
         public QualityAssuranceSnapshot QualityAssurance { get; set; } = new QualityAssuranceSnapshot();

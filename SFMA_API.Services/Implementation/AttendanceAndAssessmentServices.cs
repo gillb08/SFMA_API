@@ -63,6 +63,9 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<BatchUpdateAttendanceResponse> BatchUpdateAttendance(BatchUpdateAttendanceRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassId);
+            await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassId);
+
             var attendanceRepo = _unitOfWork.GetRepository<AttendanceRecord>();
             var auditRepo = _unitOfWork.GetRepository<AttendanceAuditLog>();
 
@@ -139,6 +142,7 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> LockAttendance(LockAttendanceRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassId);
             var attendanceRepo = _unitOfWork.GetRepository<AttendanceRecord>();
             var records = await attendanceRepo.GetByAsync(a => a.ClassSectionId == request.ClassId && a.Date.Date == request.Date.Date);
             foreach (var r in records)
@@ -348,6 +352,8 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<BatchUpdateAssessmentsResponse> BatchUpdateScores(BatchUpdateAssessmentsRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassId);
+
             var term = await _unitOfWork.GetRepository<AcademicTerm>().GetByIdAsync(request.TermId);
             if (term == null)
             {
@@ -450,6 +456,7 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> SubmitBroadsheet(BroadsheetActionRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassId);
             var scores = await _unitOfWork.GetRepository<AssessmentScore>().GetByAsync(
                 a => a.Student.ClassSectionId == request.ClassId && a.Subject.ToLower() == request.Subject.ToLower() && a.AcademicTermId == request.TermId);
 

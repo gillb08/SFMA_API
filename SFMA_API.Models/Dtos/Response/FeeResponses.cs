@@ -47,6 +47,7 @@ namespace SFMA_API.Models.Dtos.Response
         public decimal TotalBilled { get; set; }
         public decimal TotalPaid { get; set; }
         public decimal Balance { get; set; }
+        public List<FeeItemResponse> FeeItems { get; set; } = new List<FeeItemResponse>();
         public List<FeeTransactionResponse> Transactions { get; set; } = new List<FeeTransactionResponse>();
     }
 

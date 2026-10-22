@@ -33,6 +33,15 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
+        [HttpPost("schedule", Name = "upsert-fee-schedule")]
+        [SwaggerOperation(Summary = "Create or update fee schedule for a term and optional class section")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> UpsertFeeSchedule([FromBody] UpsertFeeScheduleRequest request)
+        {
+            var result = await _feeService.UpsertFeeSchedule(request);
+            return Ok(result);
+        }
+
         [HttpGet("ledger", Name = "get-fee-ledger")]
         [SwaggerOperation(Summary = "Get fee ledger transactions with filters")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
@@ -103,6 +112,15 @@ namespace SFMA_API.Api.Controllers
         public async Task<IActionResult> GetBankAccounts()
         {
             var result = await _feeService.GetBankAccounts();
+            return Ok(result);
+        }
+
+        [HttpPost("bank-accounts", Name = "upsert-bank-account")]
+        [SwaggerOperation(Summary = "Create or update a school bank account")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> UpsertBankAccount([FromBody] UpsertBankAccountRequest request)
+        {
+            var result = await _feeService.UpsertBankAccount(request);
             return Ok(result);
         }
 

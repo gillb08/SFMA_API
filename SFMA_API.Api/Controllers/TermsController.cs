@@ -41,6 +41,15 @@ namespace SFMA_API.Api.Controllers
             return Ok(result);
         }
 
+        [HttpPost("", Name = "create-term")]
+        [SwaggerOperation(Summary = "Create a new academic session term")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> CreateTerm([FromBody] CreateTermRequest request)
+        {
+            var result = await _termService.CreateTerm(request);
+            return Ok(result);
+        }
+
         [HttpPut("{id:guid}", Name = "update-term")]
         [SwaggerOperation(Summary = "Update term dates and status")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]

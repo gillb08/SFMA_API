@@ -22,6 +22,12 @@ namespace SFMA_API.Models.Configuration.MappingConfiguration
             CreateMap<AcademicTerm, TermResponse>();
             CreateMap<UpdateTermRequest, AcademicTerm>();
 
+            CreateMap<ClassSection, ClassSectionResponse>()
+                .ForMember(d => d.HomeroomTeacherName, opt => opt.MapFrom(s => s.HomeroomTeacher != null && s.HomeroomTeacher.User != null ? s.HomeroomTeacher.User.DisplayName : null))
+                .ForMember(d => d.AcademicTermName, opt => opt.MapFrom(s => s.AcademicTerm != null ? $"{s.AcademicTerm.SessionName} - Term {s.AcademicTerm.TermNumber}" : null))
+                .ForMember(d => d.StudentCount, opt => opt.MapFrom(s => s.Students != null ? s.Students.Count : 0));
+
+
             CreateMap<Staff, StaffResponse>()
                 .ForMember(d => d.FullName, opt => opt.MapFrom(s => s.User != null ? s.User.DisplayName : string.Empty))
                 .ForMember(d => d.Email, opt => opt.MapFrom(s => s.User != null ? s.User.Email : string.Empty))
@@ -30,6 +36,7 @@ namespace SFMA_API.Models.Configuration.MappingConfiguration
 
             CreateMap<Student, StudentResponse>()
                 .ForMember(d => d.ClassSectionName, opt => opt.MapFrom(s => s.ClassSection != null ? s.ClassSection.Name : string.Empty))
+                .ForMember(d => d.ClassTeacherName, opt => opt.MapFrom(s => s.ClassSection != null && s.ClassSection.HomeroomTeacher != null && s.ClassSection.HomeroomTeacher.User != null ? s.ClassSection.HomeroomTeacher.User.DisplayName : null))
                 .ForMember(d => d.Parents, opt => opt.MapFrom(s => s.StudentParents.Select(sp => new StudentParentResponse
                 {
                     ParentId = sp.ParentId,

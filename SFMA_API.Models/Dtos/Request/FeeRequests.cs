@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Dtos.Response;
+using SFMA_API.Models.Dtos.Response;
 using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
@@ -29,5 +29,30 @@ public class QueuePaymentRemindersRequest
     {
         public Guid AcademicTermId { get; set; }
         public decimal? MinBalance { get; set; }
+    }
+
+    public class FeeItemRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public short SortOrder { get; set; }
+    }
+
+    public class UpsertFeeScheduleRequest
+    {
+        public Guid AcademicTermId { get; set; }
+        public Guid? ClassSectionId { get; set; }
+        public string? ClassName { get; set; }
+        public List<FeeItemRequest> FeeItems { get; set; } = new List<FeeItemRequest>();
+    }
+
+    public class UpsertBankAccountRequest
+    {
+        public Guid? Id { get; set; }
+        public string BankName { get; set; } = string.Empty;
+        public string AccountName { get; set; } = string.Empty;
+        public string AccountNumber { get; set; } = string.Empty;
+        public string? SortCode { get; set; }
+        public bool IsActive { get; set; } = true;
     }
 }

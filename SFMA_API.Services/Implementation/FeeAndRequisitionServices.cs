@@ -33,10 +33,99 @@ namespace SFMA_API.Services.Implementation
         {
             var scheduleRepo = _unitOfWork.GetRepository<FeeSchedule>();
             var schedule = await scheduleRepo.GetSingleByAsync(
-                f => f.AcademicTermId == termId && (f.ClassSectionId == classSectionId || f.ClassSectionId == null),
+                f => f.AcademicTermId == termId && (classSectionId.HasValue ? (f.ClassSectionId == classSectionId || f.ClassSectionId == null) : f.ClassSectionId == null),
+                orderBy: q => q.OrderByDescending(f => f.ClassSectionId.HasValue),
                 include: q => q.Include(f => f.FeeItems));
 
-            return schedule != null ? _mapper.Map<FeeScheduleResponse>(schedule) : null;
+            if (schedule == null) return null;
+
+            var response = _mapper.Map<FeeScheduleResponse>(schedule);
+            response.FeeItems = response.FeeItems.OrderBy(i => i.SortOrder).ToList();
+            return response;
+        }
+
+        public async Task<FeeScheduleResponse> UpsertFeeSchedule(UpsertFeeScheduleRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            if (request.AcademicTermId == Guid.Empty)
+                throw new ArgumentException("AcademicTermId is required.");
+
+            if (request.FeeItems == null || !request.FeeItems.Any())
+                throw new ArgumentException("At least one fee item is required to configure a fee schedule.");
+
+            if (request.FeeItems.Any(i => string.IsNullOrWhiteSpace(i.Name) || i.Amount < 0))
+                throw new ArgumentException("Each fee item must have a valid name and a non-negative amount.");
+
+            var term = await _unitOfWork.GetRepository<AcademicTerm>().GetByIdAsync(request.AcademicTermId);
+            if (term == null)
+                throw new KeyNotFoundException("Academic term not found.");
+
+            if (request.ClassSectionId.HasValue && request.ClassSectionId.Value != Guid.Empty)
+            {
+                await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId.Value, request.ClassName, request.AcademicTermId);
+            }
+
+            var scheduleRepo = _unitOfWork.GetRepository<FeeSchedule>();
+            var itemRepo = _unitOfWork.GetRepository<FeeItem>();
+
+            var existingSchedule = await scheduleRepo.GetSingleByAsync(
+                f => f.AcademicTermId == request.AcademicTermId && f.ClassSectionId == request.ClassSectionId);
+
+            decimal totalAmount = request.FeeItems.Sum(i => i.Amount);
+            Guid scheduleId;
+
+            if (existingSchedule == null)
+            {
+                var newSchedule = new FeeSchedule
+                {
+                    Id = Guid.NewGuid(),
+                    AcademicTermId = request.AcademicTermId,
+                    ClassSectionId = request.ClassSectionId,
+                    TotalAmount = totalAmount,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await scheduleRepo.AddAsync(newSchedule);
+                scheduleId = newSchedule.Id;
+            }
+            else
+            {
+                existingSchedule.TotalAmount = totalAmount;
+                existingSchedule.UpdatedAt = DateTime.UtcNow;
+                await scheduleRepo.UpdateAsync(existingSchedule);
+                scheduleId = existingSchedule.Id;
+
+                await itemRepo.DeleteRangeAsync(i => i.FeeScheduleId == scheduleId);
+            }
+
+            var newItems = request.FeeItems
+                .Select((item, idx) => new FeeItem
+                {
+                    Id = Guid.NewGuid(),
+                    FeeScheduleId = scheduleId,
+                    Name = item.Name.Trim(),
+                    Amount = item.Amount,
+                    SortOrder = item.SortOrder > 0 ? item.SortOrder : (short)(idx + 1),
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow
+                })
+                .OrderBy(i => i.SortOrder)
+                .ToList();
+
+            await itemRepo.AddRangeAsync(newItems);
+            await _unitOfWork.SaveChangesAsync();
+
+            return new FeeScheduleResponse
+            {
+                Id = scheduleId,
+                AcademicTermId = request.AcademicTermId,
+                ClassSectionId = request.ClassSectionId,
+                TotalAmount = totalAmount,
+                FeeItems = _mapper.Map<List<FeeItemResponse>>(newItems)
+            };
         }
 
         public async Task<PagedResponse<FeeTransactionResponse>> GetFeeLedger(FeeTransactionStatus? status, RequestParameters parameters)
@@ -81,7 +170,9 @@ namespace SFMA_API.Services.Implementation
                 ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
 
             var feeSchedule = await _unitOfWork.GetRepository<FeeSchedule>().GetSingleByAsync(
-                f => f.AcademicTermId == activeTerm!.Id && (f.ClassSectionId == student.ClassSectionId || f.ClassSectionId == null));
+                f => f.AcademicTermId == activeTerm!.Id && (f.ClassSectionId == student.ClassSectionId || f.ClassSectionId == null),
+                orderBy: q => q.OrderByDescending(f => f.ClassSectionId.HasValue),
+                include: q => q.Include(f => f.FeeItems));
 
             // No silent fallback — if there is no fee schedule the data would be wrong.
             // Administrators must configure a fee schedule for the active term before summaries can be served.
@@ -112,6 +203,7 @@ namespace SFMA_API.Services.Implementation
                 TotalBilled = totalBilled,
                 TotalPaid = totalPaid,
                 Balance = balance,
+                FeeItems = _mapper.Map<List<FeeItemResponse>>(feeSchedule.FeeItems.OrderBy(i => i.SortOrder).ToList()),
                 Transactions = _mapper.Map<List<FeeTransactionResponse>>(transactions)
             };
         }
@@ -347,6 +439,59 @@ namespace SFMA_API.Services.Implementation
         {
             var accounts = await _unitOfWork.GetRepository<BankAccount>().GetByAsync(b => b.IsActive && b.Active);
             return _mapper.Map<IEnumerable<BankAccountResponse>>(accounts);
+        }
+
+        public async Task<BankAccountResponse> UpsertBankAccount(UpsertBankAccountRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            if (string.IsNullOrWhiteSpace(request.BankName) || string.IsNullOrWhiteSpace(request.AccountName) || string.IsNullOrWhiteSpace(request.AccountNumber))
+                throw new ArgumentException("BankName, AccountName, and AccountNumber are required.");
+
+            var repo = _unitOfWork.GetRepository<BankAccount>();
+            string normalizedAccountNumber = request.AccountNumber.Trim();
+
+            BankAccount? account = null;
+            if (request.Id.HasValue && request.Id.Value != Guid.Empty)
+            {
+                account = await repo.GetByIdAsync(request.Id.Value);
+                if (account == null)
+                    throw new KeyNotFoundException("Bank account not found.");
+            }
+            else
+            {
+                account = await repo.GetSingleByAsync(b => b.AccountNumber == normalizedAccountNumber);
+            }
+
+            if (account == null)
+            {
+                account = new BankAccount
+                {
+                    Id = Guid.NewGuid(),
+                    BankName = request.BankName.Trim(),
+                    AccountName = request.AccountName.Trim(),
+                    AccountNumber = normalizedAccountNumber,
+                    SortCode = request.SortCode?.Trim() ?? string.Empty,
+                    IsActive = request.IsActive,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await repo.AddAsync(account);
+            }
+            else
+            {
+                account.BankName = request.BankName.Trim();
+                account.AccountName = request.AccountName.Trim();
+                account.AccountNumber = normalizedAccountNumber;
+                account.SortCode = request.SortCode?.Trim() ?? string.Empty;
+                account.IsActive = request.IsActive;
+                account.UpdatedAt = DateTime.UtcNow;
+                await repo.UpdateAsync(account);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            return _mapper.Map<BankAccountResponse>(account);
         }
 
         public async Task<StudentFeeSummaryResponse> GetStatementOfAccount(Guid studentId, ClaimsPrincipal currentUser)
@@ -586,6 +731,73 @@ namespace SFMA_API.Services.Implementation
             }
 
             return _mapper.Map<RequisitionResponse>(requisition);
+        }
+
+        public async Task<BudgetItemProgress> UpsertDepartmentBudget(UpsertDepartmentBudgetRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            if (string.IsNullOrWhiteSpace(request.Department))
+                throw new ArgumentException("Department name is required.");
+
+            if (request.AllocatedAmount < 0)
+                throw new ArgumentException("AllocatedAmount cannot be negative.");
+
+            Guid termId;
+            if (request.AcademicTermId.HasValue && request.AcademicTermId.Value != Guid.Empty)
+            {
+                termId = request.AcademicTermId.Value;
+            }
+            else
+            {
+                var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive && t.Active)
+                    ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
+
+                if (activeTerm == null)
+                    throw new InvalidOperationException("No academic term is configured. Please create an academic session and term first.");
+
+                termId = activeTerm.Id;
+            }
+
+            string normalizedDept = request.Department.Trim();
+            var budgetRepo = _unitOfWork.GetRepository<DepartmentBudget>();
+            var existing = await budgetRepo.GetSingleByAsync(
+                b => b.AcademicTermId == termId && b.Department.ToLower() == normalizedDept.ToLower());
+
+            if (existing == null)
+            {
+                existing = new DepartmentBudget
+                {
+                    Id = Guid.NewGuid(),
+                    Department = normalizedDept,
+                    AcademicTermId = termId,
+                    AllocatedAmount = request.AllocatedAmount,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await budgetRepo.AddAsync(existing);
+            }
+            else
+            {
+                existing.Department = normalizedDept;
+                existing.AllocatedAmount = request.AllocatedAmount;
+                existing.UpdatedAt = DateTime.UtcNow;
+                await budgetRepo.UpdateAsync(existing);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            var actual = await _unitOfWork.GetRepository<Requisition>()
+                .GetQueryable(r => r.Department.ToLower() == normalizedDept.ToLower() && (r.Status == RequisitionStatus.Approved || r.Status == RequisitionStatus.Disbursed))
+                .SumAsync(r => (decimal?)r.Amount) ?? 0m;
+
+            return new BudgetItemProgress
+            {
+                Category = existing.Department,
+                BudgetedAmount = existing.AllocatedAmount,
+                ActualAmount = actual
+            };
         }
     }
 }

@@ -24,9 +24,21 @@ namespace SFMA_API.Services.Interfaces
     {
         Task<IEnumerable<TermResponse>> GetAllTerms();
         Task<TermResponse?> GetActiveTerm();
+        Task<TermResponse> CreateTerm(CreateTermRequest request);
         Task<TermResponse> UpdateTerm(Guid id, UpdateTermRequest request);
         Task<DeadlinesResponse> ConfigureDeadlines(Guid id, ConfigureDeadlinesRequest request);
     }
+
+    public interface IClassSectionService
+    {
+        Task<IEnumerable<ClassSectionResponse>> GetAllClasses(Guid? termId = null);
+        Task<ClassSectionResponse?> GetClassById(Guid id);
+        Task<ClassSectionResponse> CreateClass(CreateClassSectionRequest request);
+        Task<ClassSectionResponse> UpdateClass(Guid id, UpdateClassSectionRequest request);
+        Task<bool> DeleteClass(Guid id);
+        Task<IEnumerable<string>> GetDivisions();
+    }
+
 
     public interface IStaffService
     {
@@ -104,6 +116,7 @@ namespace SFMA_API.Services.Interfaces
     public interface IFeeService
     {
         Task<FeeScheduleResponse?> GetFeeSchedule(Guid termId, Guid? classSectionId);
+        Task<FeeScheduleResponse> UpsertFeeSchedule(UpsertFeeScheduleRequest request);
         Task<PagedResponse<FeeTransactionResponse>> GetFeeLedger(SFMA_API.Models.Enums.FeeTransactionStatus? status, RequestParameters parameters);
         Task<StudentFeeSummaryResponse> GetStudentFeeSummary(Guid studentId, ClaimsPrincipal currentUser);
         Task<FeeTransactionResponse> PostTeller(PostTellerRequest request, ClaimsPrincipal currentUser);
@@ -112,6 +125,7 @@ namespace SFMA_API.Services.Interfaces
         Task<ReceiptResponse?> GetReceiptPdf(Guid receiptId, ClaimsPrincipal currentUser);
         Task<bool> QueuePaymentReminders(QueuePaymentRemindersRequest request);
         Task<IEnumerable<BankAccountResponse>> GetBankAccounts();
+        Task<BankAccountResponse> UpsertBankAccount(UpsertBankAccountRequest request);
         Task<StudentFeeSummaryResponse> GetStatementOfAccount(Guid studentId, ClaimsPrincipal currentUser);
     }
 
@@ -122,6 +136,7 @@ namespace SFMA_API.Services.Interfaces
         Task<RequisitionResponse> CreateRequisition(CreateRequisitionRequest request, ClaimsPrincipal currentUser);
         Task<RequisitionResponse> ApproveRequisition(Guid id, ApproveRequisitionRequest request, ClaimsPrincipal currentUser);
         Task<RequisitionResponse> QueryRequisition(Guid id, QueryRequisitionRequest request, ClaimsPrincipal currentUser);
+        Task<BudgetItemProgress> UpsertDepartmentBudget(UpsertDepartmentBudgetRequest request);
     }
 
     public interface ISchemeAndTimetableService
@@ -155,6 +170,8 @@ namespace SFMA_API.Services.Interfaces
         Task<InquiryMessageResponse> AddInquiryMessage(Guid id, AddInquiryMessageRequest request, ClaimsPrincipal currentUser);
         Task<InquiryResponse> UpdateInquiryStatus(Guid id, UpdateInquiryStatusRequest request, ClaimsPrincipal currentUser);
         Task<IEnumerable<SchoolRequirementResponse>> GetSchoolRequirements(Guid classSectionId, Guid? termId, Guid? studentId);
+        Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request);
+        Task<bool> DeleteSchoolRequirement(Guid id);
         Task<bool> ToggleRequirementStatus(Guid requirementId, ToggleRequirementStatusRequest request, ClaimsPrincipal currentUser);
         Task<string> ExportRequirementsPdf(Guid classSectionId);
     }

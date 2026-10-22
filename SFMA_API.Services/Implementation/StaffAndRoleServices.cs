@@ -16,6 +16,102 @@ using System.Threading.Tasks;
 
 namespace SFMA_API.Services.Implementation
 {
+    internal static class ClassSectionHelper
+    {
+        public static async Task<ClassSection> EnsureClassSectionAsync(
+            IUnitOfWork unitOfWork,
+            Guid classSectionId,
+            string? explicitName = null,
+            Guid? explicitTermId = null)
+        {
+            var classRepo = unitOfWork.GetRepository<ClassSection>();
+
+            if (classSectionId != Guid.Empty)
+            {
+                var existing = await classRepo.GetByIdAsync(classSectionId);
+                if (existing != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(explicitName) && existing.Name != explicitName.Trim())
+                    {
+                        existing.Name = explicitName.Trim();
+                        existing.UpdatedAt = DateTime.UtcNow;
+                        await classRepo.UpdateAsync(existing);
+                    }
+                    return existing;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(explicitName))
+            {
+                var byName = await classRepo.GetSingleByAsync(
+                    c => c.Name.ToLower() == explicitName.Trim().ToLower());
+                if (byName != null) return byName;
+            }
+
+            if (string.IsNullOrWhiteSpace(explicitName))
+            {
+                throw new KeyNotFoundException($"Class section with ID '{classSectionId}' was not found.");
+            }
+
+            Guid termId;
+            if (explicitTermId.HasValue && explicitTermId.Value != Guid.Empty)
+            {
+                termId = explicitTermId.Value;
+            }
+            else
+            {
+                var activeTerm = await unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive && t.Active)
+                    ?? await unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
+
+                if (activeTerm == null)
+                {
+                    throw new InvalidOperationException("No academic term is configured. Please create an academic term in Session & Terms Setup first.");
+                }
+                termId = activeTerm.Id;
+            }
+
+            var newSection = new ClassSection
+            {
+                Id = classSectionId != Guid.Empty ? classSectionId : Guid.NewGuid(),
+                Name = explicitName.Trim(),
+                Division = "General",
+                AcademicTermId = termId,
+                Active = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await classRepo.AddAsync(newSection);
+            return newSection;
+        }
+
+        public static async Task ValidateTeacherClassAccessAsync(
+            IUnitOfWork unitOfWork,
+            ClaimsPrincipal currentUser,
+            Guid targetClassId)
+        {
+            if (currentUser == null) return;
+
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head");
+            if (isSupervisor || !roles.Contains("teacher"))
+            {
+                return;
+            }
+
+            string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId)) return;
+
+            var staff = await unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
+            if (staff == null) return;
+
+            var assignedClass = await unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
+            if (assignedClass != null && assignedClass.Id != targetClassId)
+            {
+                throw new UnauthorizedAccessException($"Access denied: You are assigned solely to {assignedClass.Name} and cannot modify records for another class.");
+            }
+        }
+    }
+
     public class StaffService : IStaffService
     {
         private readonly IUnitOfWork _unitOfWork;
@@ -36,6 +132,38 @@ namespace SFMA_API.Services.Implementation
             _roleManager = roleManager;
             _mapper = mapper;
             _notificationService = notificationService;
+        }
+
+        private async Task<(Guid? ClassId, string? ClassName)> AssignClassToStaffAsync(Guid staffId, Guid? classSectionId, string? className)
+        {
+            var classRepo = _unitOfWork.GetRepository<ClassSection>();
+            var previouslyAssigned = await classRepo.GetByAsync(c => c.HomeroomTeacherId == staffId);
+            foreach (var prev in previouslyAssigned)
+            {
+                if (!classSectionId.HasValue || prev.Id != classSectionId.Value)
+                {
+                    prev.HomeroomTeacherId = null;
+                    prev.UpdatedAt = DateTime.UtcNow;
+                    await classRepo.UpdateAsync(prev);
+                }
+            }
+
+            if (!classSectionId.HasValue || classSectionId.Value == Guid.Empty)
+            {
+                return (null, null);
+            }
+
+            var existingSection = await classRepo.GetByIdAsync(classSectionId.Value);
+            var targetSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, classSectionId.Value, className);
+            targetSection.HomeroomTeacherId = staffId;
+            targetSection.UpdatedAt = DateTime.UtcNow;
+
+            if (existingSection != null)
+            {
+                await classRepo.UpdateAsync(targetSection);
+            }
+
+            return (targetSection.Id, targetSection.Name);
         }
 
         public async Task<PagedResponse<StaffResponse>> GetAllStaff(string? department, string? roleKey, string? status, RequestParameters parameters)
@@ -65,7 +193,19 @@ namespace SFMA_API.Services.Implementation
             var skip = (parameters.PageNumber - 1) * parameters.PageSize;
             var items = await query.OrderBy(s => s.StaffCode).Skip(skip).Take(parameters.PageSize).ToListAsync();
 
-            var mappedItems = _mapper.Map<IEnumerable<StaffResponse>>(items);
+            var mappedItems = _mapper.Map<List<StaffResponse>>(items);
+            var assignedClasses = await _unitOfWork.GetRepository<ClassSection>().GetByAsync(c => c.HomeroomTeacherId != null);
+
+            foreach (var dto in mappedItems)
+            {
+                var assigned = assignedClasses.FirstOrDefault(c => c.HomeroomTeacherId == dto.Id);
+                if (assigned != null)
+                {
+                    dto.AssignedClassId = assigned.Id;
+                    dto.AssignedClassName = assigned.Name;
+                }
+            }
+
             return new PagedResponse<StaffResponse>
             {
                 MetaData = new MetaData
@@ -85,7 +225,16 @@ namespace SFMA_API.Services.Implementation
                 s => s.Id == id,
                 include: q => q.Include(s => s.User).ThenInclude(u => u.UserRoles).ThenInclude(ur => ur.Role));
 
-            return staff != null ? _mapper.Map<StaffResponse>(staff) : null;
+            if (staff == null) return null;
+
+            var dto = _mapper.Map<StaffResponse>(staff);
+            var assigned = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
+            if (assigned != null)
+            {
+                dto.AssignedClassId = assigned.Id;
+                dto.AssignedClassName = assigned.Name;
+            }
+            return dto;
         }
 
         public async Task<CreateStaffResponse> CreateStaff(CreateStaffRequest request)
@@ -141,11 +290,24 @@ namespace SFMA_API.Services.Implementation
             };
 
             await _unitOfWork.GetRepository<Staff>().AddAsync(staff);
+
+            (Guid? assignedClassId, string? assignedClassName) = (null, null);
+            if (request.AssignedClassId.HasValue && request.AssignedClassId.Value != Guid.Empty)
+            {
+                (assignedClassId, assignedClassName) = await AssignClassToStaffAsync(staff.Id, request.AssignedClassId, request.AssignedClassName);
+            }
+
             await _unitOfWork.SaveChangesAsync();
 
             var staffResponse = _mapper.Map<StaffResponse>(staff);
+            staffResponse.Role = request.RoleKey;
+            staffResponse.AssignedClassId = assignedClassId;
+            staffResponse.AssignedClassName = assignedClassName;
+
             var userResponse = _mapper.Map<UserProfileResponse>(user);
             userResponse.Role = request.RoleKey;
+            userResponse.AssignedClassId = assignedClassId;
+            userResponse.AssignedClassName = assignedClassName;
 
             // Background notification dispatch to staff email and phone
             _ = Task.Run(() => _notificationService.SendStaffCredentialsAsync(
@@ -194,11 +356,31 @@ namespace SFMA_API.Services.Implementation
                 await _userManager.AddToRoleAsync(staff.User, request.RoleKey);
             }
 
+            if (request.AssignedClassId.HasValue)
+            {
+                await AssignClassToStaffAsync(staff.Id, request.AssignedClassId, request.AssignedClassName);
+            }
+            else if (!string.IsNullOrWhiteSpace(request.RoleKey) && !request.RoleKey.Equals("teacher", StringComparison.OrdinalIgnoreCase))
+            {
+                await AssignClassToStaffAsync(staff.Id, null, null);
+            }
+
             await staffRepo.UpdateAsync(staff);
             await _userManager.UpdateAsync(staff.User);
             await _unitOfWork.SaveChangesAsync();
 
-            return _mapper.Map<StaffResponse>(staff);
+            var dto = _mapper.Map<StaffResponse>(staff);
+            if (!string.IsNullOrWhiteSpace(request.RoleKey))
+            {
+                dto.Role = request.RoleKey;
+            }
+            var assigned = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
+            if (assigned != null)
+            {
+                dto.AssignedClassId = assigned.Id;
+                dto.AssignedClassName = assigned.Name;
+            }
+            return dto;
         }
 
         public async Task<StaffResponse> UpdateStaffStatus(Guid id, UpdateStaffStatusRequest request)
