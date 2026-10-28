@@ -118,6 +118,62 @@ namespace SFMA_API.Data.Migrations
                     b.ToTable("AcademicTerms");
                 });
 
+            modelBuilder.Entity("SFMA_API.Models.Entities.AcademicWorkflowAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ActorRole")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ActorStaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Comments")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FromStatus")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ToStatus")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorStaffId");
+
+                    b.ToTable("AcademicWorkflowAuditLogs");
+                });
+
             modelBuilder.Entity("SFMA_API.Models.Entities.ApplicationRole", b =>
                 {
                     b.Property<string>("Id")
@@ -738,6 +794,51 @@ namespace SFMA_API.Data.Migrations
                     b.ToTable("ClassSections");
                 });
 
+            modelBuilder.Entity("SFMA_API.Models.Entities.CurriculumTopic", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AcademicTermId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("ClassSectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("LearningOutcomes")
+                        .HasColumnType("text");
+
+                    b.Property<short>("SequenceNumber")
+                        .HasColumnType("smallint");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcademicTermId");
+
+                    b.HasIndex("ClassSectionId");
+
+                    b.HasIndex("SubjectId");
+
+                    b.ToTable("CurriculumTopics");
+                });
+
             modelBuilder.Entity("SFMA_API.Models.Entities.DepartmentBudget", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1095,6 +1196,9 @@ namespace SFMA_API.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("AcademicTermId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("Active")
                         .HasColumnType("boolean");
 
@@ -1104,8 +1208,20 @@ namespace SFMA_API.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("DeliveryRemark")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DeliveryStatus")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FileUrl")
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("LessonDate")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("NoteCode")
                         .IsRequired()
@@ -1114,11 +1230,17 @@ namespace SFMA_API.Data.Migrations
                     b.Property<string>("Objectives")
                         .HasColumnType("text");
 
+                    b.Property<int?>("PeriodNumber")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("ReviewedById")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ReviewerComments")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("SchemeOfWorkEntryId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("StaffId")
                         .HasColumnType("uuid");
@@ -1129,6 +1251,9 @@ namespace SFMA_API.Data.Migrations
                     b.Property<string>("Subject")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("SubmittedAt")
                         .HasColumnType("timestamp without time zone");
@@ -1142,6 +1267,8 @@ namespace SFMA_API.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AcademicTermId");
+
                     b.HasIndex("ClassSectionId");
 
                     b.HasIndex("NoteCode")
@@ -1149,7 +1276,11 @@ namespace SFMA_API.Data.Migrations
 
                     b.HasIndex("ReviewedById");
 
+                    b.HasIndex("SchemeOfWorkEntryId");
+
                     b.HasIndex("StaffId");
+
+                    b.HasIndex("SubjectId");
 
                     b.ToTable("LessonNotes");
                 });
@@ -1378,11 +1509,20 @@ namespace SFMA_API.Data.Migrations
                     b.Property<bool>("Active")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("ApprovalStatus")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("ClassSectionId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("CreatedByStaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CurriculumTopicId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("LearningObjectives")
                         .HasColumnType("text");
@@ -1393,8 +1533,14 @@ namespace SFMA_API.Data.Migrations
                     b.Property<string>("MaterialsUrl")
                         .HasColumnType("text");
 
+                    b.Property<string>("ReviewComment")
+                        .HasColumnType("text");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Topic")
                         .IsRequired()
@@ -1403,8 +1549,14 @@ namespace SFMA_API.Data.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("VettedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<bool>("VettedByHos")
                         .HasColumnType("boolean");
+
+                    b.Property<Guid?>("VettedByStaffId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("WeekLabel")
                         .IsRequired()
@@ -1418,6 +1570,14 @@ namespace SFMA_API.Data.Migrations
                     b.HasIndex("AcademicTermId");
 
                     b.HasIndex("ClassSectionId");
+
+                    b.HasIndex("CreatedByStaffId");
+
+                    b.HasIndex("CurriculumTopicId");
+
+                    b.HasIndex("SubjectId");
+
+                    b.HasIndex("VettedByStaffId");
 
                     b.ToTable("SchemeOfWorkEntries");
                 });
@@ -1783,6 +1943,16 @@ namespace SFMA_API.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SFMA_API.Models.Entities.AcademicWorkflowAuditLog", b =>
+                {
+                    b.HasOne("SFMA_API.Models.Entities.Staff", "ActorStaff")
+                        .WithMany()
+                        .HasForeignKey("ActorStaffId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ActorStaff");
+                });
+
             modelBuilder.Entity("SFMA_API.Models.Entities.ApplicationRoleClaim", b =>
                 {
                     b.HasOne("SFMA_API.Models.Entities.ApplicationRole", "Role")
@@ -1986,6 +2156,32 @@ namespace SFMA_API.Data.Migrations
                     b.Navigation("HomeroomTeacher");
                 });
 
+            modelBuilder.Entity("SFMA_API.Models.Entities.CurriculumTopic", b =>
+                {
+                    b.HasOne("SFMA_API.Models.Entities.AcademicTerm", "AcademicTerm")
+                        .WithMany("CurriculumTopics")
+                        .HasForeignKey("AcademicTermId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SFMA_API.Models.Entities.ClassSection", "ClassSection")
+                        .WithMany("CurriculumTopics")
+                        .HasForeignKey("ClassSectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SFMA_API.Models.Entities.Subject", "Subject")
+                        .WithMany("CurriculumTopics")
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AcademicTerm");
+
+                    b.Navigation("ClassSection");
+
+                    b.Navigation("Subject");
+                });
+
             modelBuilder.Entity("SFMA_API.Models.Entities.DepartmentBudget", b =>
                 {
                     b.HasOne("SFMA_API.Models.Entities.AcademicTerm", "AcademicTerm")
@@ -2118,6 +2314,11 @@ namespace SFMA_API.Data.Migrations
 
             modelBuilder.Entity("SFMA_API.Models.Entities.LessonNote", b =>
                 {
+                    b.HasOne("SFMA_API.Models.Entities.AcademicTerm", "AcademicTerm")
+                        .WithMany()
+                        .HasForeignKey("AcademicTermId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SFMA_API.Models.Entities.ClassSection", "ClassSection")
                         .WithMany("LessonNotes")
                         .HasForeignKey("ClassSectionId")
@@ -2129,17 +2330,33 @@ namespace SFMA_API.Data.Migrations
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SFMA_API.Models.Entities.SchemeOfWorkEntry", "SchemeOfWorkEntry")
+                        .WithMany("LessonNotes")
+                        .HasForeignKey("SchemeOfWorkEntryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SFMA_API.Models.Entities.Staff", "Staff")
                         .WithMany("LessonNotes")
                         .HasForeignKey("StaffId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SFMA_API.Models.Entities.Subject", "SubjectRef")
+                        .WithMany()
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AcademicTerm");
+
                     b.Navigation("ClassSection");
 
                     b.Navigation("ReviewedBy");
 
+                    b.Navigation("SchemeOfWorkEntry");
+
                     b.Navigation("Staff");
+
+                    b.Navigation("SubjectRef");
                 });
 
             modelBuilder.Entity("SFMA_API.Models.Entities.Parent", b =>
@@ -2216,9 +2433,37 @@ namespace SFMA_API.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SFMA_API.Models.Entities.Staff", "CreatedByStaff")
+                        .WithMany()
+                        .HasForeignKey("CreatedByStaffId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SFMA_API.Models.Entities.CurriculumTopic", "CurriculumTopic")
+                        .WithMany("SchemeOfWorkEntries")
+                        .HasForeignKey("CurriculumTopicId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SFMA_API.Models.Entities.Subject", "Subject")
+                        .WithMany("SchemeOfWorkEntries")
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SFMA_API.Models.Entities.Staff", "VettedByStaff")
+                        .WithMany()
+                        .HasForeignKey("VettedByStaffId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("AcademicTerm");
 
                     b.Navigation("ClassSection");
+
+                    b.Navigation("CreatedByStaff");
+
+                    b.Navigation("CurriculumTopic");
+
+                    b.Navigation("Subject");
+
+                    b.Navigation("VettedByStaff");
                 });
 
             modelBuilder.Entity("SFMA_API.Models.Entities.SchoolRequirement", b =>
@@ -2332,6 +2577,8 @@ namespace SFMA_API.Data.Migrations
 
                     b.Navigation("ClassSections");
 
+                    b.Navigation("CurriculumTopics");
+
                     b.Navigation("FeeSchedules");
 
                     b.Navigation("FeeTransactions");
@@ -2372,6 +2619,8 @@ namespace SFMA_API.Data.Migrations
 
                     b.Navigation("AttendanceRecords");
 
+                    b.Navigation("CurriculumTopics");
+
                     b.Navigation("LessonNotes");
 
                     b.Navigation("SchemeOfWorkEntries");
@@ -2381,6 +2630,11 @@ namespace SFMA_API.Data.Migrations
                     b.Navigation("Students");
 
                     b.Navigation("TimetableSlots");
+                });
+
+            modelBuilder.Entity("SFMA_API.Models.Entities.CurriculumTopic", b =>
+                {
+                    b.Navigation("SchemeOfWorkEntries");
                 });
 
             modelBuilder.Entity("SFMA_API.Models.Entities.FeeSchedule", b =>
@@ -2410,6 +2664,11 @@ namespace SFMA_API.Data.Migrations
             modelBuilder.Entity("SFMA_API.Models.Entities.Requisition", b =>
                 {
                     b.Navigation("ApprovalStages");
+                });
+
+            modelBuilder.Entity("SFMA_API.Models.Entities.SchemeOfWorkEntry", b =>
+                {
+                    b.Navigation("LessonNotes");
                 });
 
             modelBuilder.Entity("SFMA_API.Models.Entities.SchoolRequirement", b =>
@@ -2443,6 +2702,13 @@ namespace SFMA_API.Data.Migrations
                     b.Navigation("RequirementStatuses");
 
                     b.Navigation("StudentParents");
+                });
+
+            modelBuilder.Entity("SFMA_API.Models.Entities.Subject", b =>
+                {
+                    b.Navigation("CurriculumTopics");
+
+                    b.Navigation("SchemeOfWorkEntries");
                 });
 #pragma warning restore 612, 618
         }

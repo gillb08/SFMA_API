@@ -22,6 +22,7 @@ namespace SFMA_API.Models.Entities
         public virtual ICollection<FeeSchedule> FeeSchedules { get; set; } = new List<FeeSchedule>();
         public virtual ICollection<FeeTransaction> FeeTransactions { get; set; } = new List<FeeTransaction>();
         public virtual ICollection<SchemeOfWorkEntry> SchemeOfWorkEntries { get; set; } = new List<SchemeOfWorkEntry>();
+        public virtual ICollection<CurriculumTopic> CurriculumTopics { get; set; } = new List<CurriculumTopic>();
         public virtual ICollection<SchoolRequirement> SchoolRequirements { get; set; } = new List<SchoolRequirement>();
     }
 
@@ -39,6 +40,7 @@ namespace SFMA_API.Models.Entities
         public virtual ICollection<Student> Students { get; set; } = new List<Student>();
         public virtual ICollection<TimetableSlot> TimetableSlots { get; set; } = new List<TimetableSlot>();
         public virtual ICollection<SchemeOfWorkEntry> SchemeOfWorkEntries { get; set; } = new List<SchemeOfWorkEntry>();
+        public virtual ICollection<CurriculumTopic> CurriculumTopics { get; set; } = new List<CurriculumTopic>();
         public virtual ICollection<AttendanceRecord> AttendanceRecords { get; set; } = new List<AttendanceRecord>();
         public virtual ICollection<LessonNote> LessonNotes { get; set; } = new List<LessonNote>();
         public virtual ICollection<Assignment> Assignments { get; set; } = new List<Assignment>();
@@ -106,11 +108,33 @@ namespace SFMA_API.Models.Entities
         public virtual Staff? ApprovedBy { get; set; }
     }
 
+    public class CurriculumTopic : BaseEntity
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public Guid SubjectId { get; set; }
+        public Guid? ClassSectionId { get; set; }
+        public Guid AcademicTermId { get; set; }
+        public string Topic { get; set; } = string.Empty;
+        public string? LearningOutcomes { get; set; }
+        public short SequenceNumber { get; set; } = 1;
+
+        public virtual Subject Subject { get; set; } = null!;
+        public virtual ClassSection? ClassSection { get; set; }
+        public virtual AcademicTerm AcademicTerm { get; set; } = null!;
+        public virtual ICollection<SchemeOfWorkEntry> SchemeOfWorkEntries { get; set; } = new List<SchemeOfWorkEntry>();
+    }
+
     public class SchemeOfWorkEntry : BaseEntity
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid ClassSectionId { get; set; }
         public Guid AcademicTermId { get; set; }
+        public Guid? SubjectId { get; set; }
+        public Guid? CurriculumTopicId { get; set; }
+        public Guid? CreatedByStaffId { get; set; }
+        public Guid? VettedByStaffId { get; set; }
+        public DateTime? VettedAt { get; set; }
+        public string? ReviewComment { get; set; }
         public short WeekNumber { get; set; }
         public string WeekLabel { get; set; } = string.Empty;
         public string Topic { get; set; } = string.Empty;
@@ -118,10 +142,16 @@ namespace SFMA_API.Models.Entities
         public string? MaterialsName { get; set; }
         public string? MaterialsUrl { get; set; }
         public SchemeStatus Status { get; set; } = SchemeStatus.Upcoming;
+        public SchemeApprovalStatus ApprovalStatus { get; set; } = SchemeApprovalStatus.Draft;
         public bool VettedByHos { get; set; }
 
         public virtual ClassSection ClassSection { get; set; } = null!;
         public virtual AcademicTerm AcademicTerm { get; set; } = null!;
+        public virtual Subject? Subject { get; set; }
+        public virtual CurriculumTopic? CurriculumTopic { get; set; }
+        public virtual Staff? CreatedByStaff { get; set; }
+        public virtual Staff? VettedByStaff { get; set; }
+        public virtual ICollection<LessonNote> LessonNotes { get; set; } = new List<LessonNote>();
     }
 
     public class TimetableSlot : BaseEntity
@@ -145,18 +175,29 @@ namespace SFMA_API.Models.Entities
         public Guid Id { get; set; } = Guid.NewGuid();
         public string NoteCode { get; set; } = string.Empty;
         public Guid StaffId { get; set; }
+        public Guid? AcademicTermId { get; set; }
+        public Guid? SubjectId { get; set; }
+        public Guid? SchemeOfWorkEntryId { get; set; }
         public string Subject { get; set; } = string.Empty;
         public string Topic { get; set; } = string.Empty;
         public Guid ClassSectionId { get; set; }
+        public DateTime? LessonDate { get; set; }
+        public int? PeriodNumber { get; set; }
         public string? Objectives { get; set; }
         public string? FileUrl { get; set; }
         public LessonNoteStatus Status { get; set; } = LessonNoteStatus.Submitted;
+        public LessonDeliveryStatus DeliveryStatus { get; set; } = LessonDeliveryStatus.Planned;
+        public DateTime? DeliveredAt { get; set; }
+        public string? DeliveryRemark { get; set; }
         public Guid? ReviewedById { get; set; }
         public string? ReviewerComments { get; set; }
         public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 
         public virtual Staff Staff { get; set; } = null!;
         public virtual ClassSection ClassSection { get; set; } = null!;
+        public virtual AcademicTerm? AcademicTerm { get; set; }
+        public virtual Subject? SubjectRef { get; set; }
+        public virtual SchemeOfWorkEntry? SchemeOfWorkEntry { get; set; }
         public virtual Staff? ReviewedBy { get; set; }
     }
 
@@ -208,6 +249,8 @@ namespace SFMA_API.Models.Entities
 
         public virtual ClassSection? ClassSection { get; set; }
         public virtual AcademicTerm? AcademicTerm { get; set; }
+        public virtual ICollection<CurriculumTopic> CurriculumTopics { get; set; } = new List<CurriculumTopic>();
+        public virtual ICollection<SchemeOfWorkEntry> SchemeOfWorkEntries { get; set; } = new List<SchemeOfWorkEntry>();
     }
 
     public class UploadedFileRecord : BaseEntity
@@ -221,5 +264,22 @@ namespace SFMA_API.Models.Entities
         public string? UploadedByUserId { get; set; }
         public Guid? StudentId { get; set; }
         public Guid? ClassSectionId { get; set; }
+    }
+
+    public class AcademicWorkflowAuditLog : BaseEntity
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string EntityType { get; set; } = string.Empty; // "SchemeOfWorkEntry", "LessonNote", "CurriculumTopic"
+        public Guid EntityId { get; set; }
+        public string Action { get; set; } = string.Empty; // "Created", "Submitted", "Approved", "RevisionRequested", "Archived", "Delivered", "Rescheduled"
+        public string? FromStatus { get; set; }
+        public string? ToStatus { get; set; }
+        public Guid? ActorStaffId { get; set; }
+        public string ActorName { get; set; } = string.Empty;
+        public string ActorRole { get; set; } = string.Empty;
+        public string? Comments { get; set; }
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+        public virtual Staff? ActorStaff { get; set; }
     }
 }

@@ -26,7 +26,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetTimetable(Guid classId)
         {
-            var result = await _service.GetTimetable(classId);
+            var result = await _service.GetTimetable(classId, HttpContext.User);
             return Ok(result);
         }
 
@@ -35,7 +35,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateTimetable(Guid classId, [FromBody] UpdateTimetableRequest request)
         {
-            var result = await _service.UpdateTimetable(classId, request);
+            var result = await _service.UpdateTimetable(classId, request, HttpContext.User);
             return Ok(result);
         }
     }

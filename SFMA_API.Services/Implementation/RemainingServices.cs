@@ -30,71 +30,402 @@ namespace SFMA_API.Services.Implementation
             _mapper = mapper;
         }
 
-        public async Task<IEnumerable<SchemeOfWorkResponse>> GetSchemeOfWork(Guid classSectionId, Guid? termId)
+        public async Task<IEnumerable<SchemeOfWorkResponse>> GetSchemeOfWork(Guid classSectionId, Guid? termId, Guid? subjectId, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateClassAccessForPortalUserAsync(_unitOfWork, currentUser, classSectionId);
+
             var query = _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetQueryable(s => s.ClassSectionId == classSectionId);
 
-            if (termId.HasValue)
+            var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor && (roles.Contains("parent") || roles.Contains("student")))
+            {
+                query = query.Where(s => s.ApprovalStatus == SchemeApprovalStatus.Approved || s.VettedByHos);
+            }
+
+            if (termId.HasValue && termId.Value != Guid.Empty)
             {
                 query = query.Where(s => s.AcademicTermId == termId.Value);
             }
 
-            var list = await query.OrderBy(s => s.WeekNumber).ToListAsync();
-            return _mapper.Map<IEnumerable<SchemeOfWorkResponse>>(list);
+            if (subjectId.HasValue && subjectId.Value != Guid.Empty)
+            {
+                query = query.Where(s => s.SubjectId == subjectId.Value);
+            }
+
+            return await query
+                .OrderBy(s => s.WeekNumber)
+                .Select(s => new SchemeOfWorkResponse
+                {
+                    Id = s.Id,
+                    ClassSectionId = s.ClassSectionId,
+                    ClassSectionName = s.ClassSection != null ? s.ClassSection.Name : string.Empty,
+                    AcademicTermId = s.AcademicTermId,
+                    AcademicTermName = s.AcademicTerm != null ? $"Term {s.AcademicTerm.TermNumber} ({s.AcademicTerm.SessionName})" : string.Empty,
+                    SubjectId = s.SubjectId,
+                    SubjectName = s.Subject != null ? s.Subject.Name : (s.Topic.StartsWith("[") && s.Topic.Contains("]") ? s.Topic.Substring(1, s.Topic.IndexOf(']') - 1) : "General"),
+                    CurriculumTopicId = s.CurriculumTopicId,
+                    CurriculumTopicTitle = s.CurriculumTopic != null ? s.CurriculumTopic.Topic : null,
+                    WeekNumber = s.WeekNumber,
+                    WeekLabel = s.WeekLabel,
+                    Topic = s.Topic,
+                    LearningObjectives = s.LearningObjectives,
+                    MaterialsName = s.MaterialsName,
+                    MaterialsUrl = s.MaterialsUrl,
+                    Status = s.Status,
+                    ApprovalStatus = s.ApprovalStatus != 0 ? s.ApprovalStatus : (s.VettedByHos ? SchemeApprovalStatus.Approved : SchemeApprovalStatus.Draft),
+                    ApprovalStatusLabel = (s.ApprovalStatus != 0 ? s.ApprovalStatus : (s.VettedByHos ? SchemeApprovalStatus.Approved : SchemeApprovalStatus.Draft)).ToString(),
+                    VettedByHos = s.VettedByHos || s.ApprovalStatus == SchemeApprovalStatus.Approved,
+                    CreatedByStaffId = s.CreatedByStaffId,
+                    CreatedByStaffName = s.CreatedByStaff != null && s.CreatedByStaff.User != null ? s.CreatedByStaff.User.DisplayName : null,
+                    VettedByStaffId = s.VettedByStaffId,
+                    VettedByStaffName = s.VettedByStaff != null && s.VettedByStaff.User != null ? s.VettedByStaff.User.DisplayName : null,
+                    VettedAt = s.VettedAt,
+                    ReviewComment = s.ReviewComment,
+                    DeliveredLessonCount = s.LessonNotes.Count(ln => ln.DeliveryStatus == LessonDeliveryStatus.Delivered),
+                    TotalLessonCount = s.LessonNotes.Count(),
+                    CreatedAt = s.CreatedAt
+                })
+                .ToListAsync();
         }
 
-        public async Task<SchemeOfWorkResponse> CreateSchemeOfWork(CreateSchemeOfWorkRequest request)
+        public async Task<SchemeOfWorkResponse> CreateSchemeOfWork(CreateSchemeOfWorkRequest request, ClaimsPrincipal currentUser)
         {
+            if (request.ClassSectionId == Guid.Empty)
+                throw new ArgumentException("Class section identifier is required.");
+            if (request.AcademicTermId == Guid.Empty)
+                throw new ArgumentException("Academic term identifier is required.");
+
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
             await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId, null, request.AcademicTermId);
 
-            var entry = _mapper.Map<SchemeOfWorkEntry>(request);
-            entry.Id = Guid.NewGuid();
-            entry.VettedByHos = false;
-            entry.Status = request.Status ?? SchemeStatus.Upcoming;
-            entry.CreatedAt = DateTime.UtcNow;
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentStaff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == currentUserId, include: q => q.Include(s => s.User));
+
+            CurriculumTopic? topicEntity = null;
+            if (request.CurriculumTopicId.HasValue && request.CurriculumTopicId.Value != Guid.Empty)
+            {
+                topicEntity = await _unitOfWork.GetRepository<CurriculumTopic>().GetByIdAsync(request.CurriculumTopicId.Value);
+            }
+
+            var entry = new SchemeOfWorkEntry
+            {
+                Id = Guid.NewGuid(),
+                ClassSectionId = request.ClassSectionId,
+                AcademicTermId = request.AcademicTermId,
+                SubjectId = request.SubjectId ?? topicEntity?.SubjectId,
+                CurriculumTopicId = topicEntity?.Id,
+                WeekNumber = request.WeekNumber > 0 ? request.WeekNumber : (short)1,
+                WeekLabel = !string.IsNullOrWhiteSpace(request.WeekLabel) ? request.WeekLabel.Trim() : $"Week {request.WeekNumber}",
+                Topic = !string.IsNullOrWhiteSpace(request.Topic) ? request.Topic.Trim() : (topicEntity?.Topic ?? "Untitled Topic"),
+                LearningObjectives = !string.IsNullOrWhiteSpace(request.LearningObjectives) ? request.LearningObjectives.Trim() : topicEntity?.LearningOutcomes,
+                MaterialsName = request.MaterialsName?.Trim(),
+                MaterialsUrl = request.MaterialsUrl?.Trim(),
+                Status = request.Status ?? SchemeStatus.Upcoming,
+                ApprovalStatus = SchemeApprovalStatus.Submitted,
+                VettedByHos = false,
+                CreatedByStaffId = currentStaff?.Id,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var auditLog = new AcademicWorkflowAuditLog
+            {
+                Id = Guid.NewGuid(),
+                EntityType = "SchemeOfWorkEntry",
+                EntityId = entry.Id,
+                Action = "Submitted",
+                ToStatus = SchemeApprovalStatus.Submitted.ToString(),
+                ActorStaffId = currentStaff?.Id,
+                ActorName = currentStaff?.User?.DisplayName ?? currentUser.Identity?.Name ?? "Teacher",
+                ActorRole = currentUser.FindFirst(ClaimTypes.Role)?.Value ?? "teacher",
+                Comments = $"Submitted scheme of work for {entry.WeekLabel}: {entry.Topic}",
+                Timestamp = DateTime.UtcNow
+            };
 
             await _unitOfWork.GetRepository<SchemeOfWorkEntry>().AddAsync(entry);
+            await _unitOfWork.GetRepository<AcademicWorkflowAuditLog>().AddAsync(auditLog);
             await _unitOfWork.SaveChangesAsync();
 
-            return _mapper.Map<SchemeOfWorkResponse>(entry);
+            return (await GetSchemeOfWork(entry.ClassSectionId, entry.AcademicTermId, null, currentUser)).First(s => s.Id == entry.Id);
         }
 
-        public async Task<SchemeOfWorkResponse> UpdateSchemeOfWork(Guid id, UpdateSchemeOfWorkRequest request)
+        public async Task<SchemeOfWorkResponse> UpdateSchemeOfWork(Guid id, UpdateSchemeOfWorkRequest request, ClaimsPrincipal currentUser)
         {
             var entry = await _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetByIdAsync(id);
             if (entry == null)
                 throw new KeyNotFoundException($"Scheme of work entry with id {id} not found.");
 
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, entry.ClassSectionId);
+
+            var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head");
+
+            if (!isSupervisor && entry.ApprovalStatus == SchemeApprovalStatus.Approved)
+            {
+                throw new InvalidOperationException("Cannot modify an already approved scheme of work. An academic supervisor must request revisions first.");
+            }
+
+            if (request.CurriculumTopicId.HasValue && request.CurriculumTopicId.Value != Guid.Empty)
+            {
+                var topicEntity = await _unitOfWork.GetRepository<CurriculumTopic>().GetByIdAsync(request.CurriculumTopicId.Value);
+                if (topicEntity != null)
+                {
+                    entry.CurriculumTopicId = topicEntity.Id;
+                    if (!request.SubjectId.HasValue) entry.SubjectId = topicEntity.SubjectId;
+                    if (string.IsNullOrWhiteSpace(request.Topic)) entry.Topic = topicEntity.Topic;
+                    if (string.IsNullOrWhiteSpace(request.LearningObjectives)) entry.LearningObjectives = topicEntity.LearningOutcomes;
+                }
+            }
+
+            if (request.SubjectId.HasValue && request.SubjectId.Value != Guid.Empty) entry.SubjectId = request.SubjectId.Value;
+            if (request.WeekNumber.HasValue) entry.WeekNumber = request.WeekNumber.Value;
+            if (!string.IsNullOrWhiteSpace(request.WeekLabel)) entry.WeekLabel = request.WeekLabel.Trim();
             if (!string.IsNullOrWhiteSpace(request.Topic)) entry.Topic = request.Topic.Trim();
-            if (request.LearningObjectives != null) entry.LearningObjectives = request.LearningObjectives;
-            if (request.MaterialsName != null) entry.MaterialsName = request.MaterialsName;
-            if (request.MaterialsUrl != null) entry.MaterialsUrl = request.MaterialsUrl;
+            if (request.LearningObjectives != null) entry.LearningObjectives = request.LearningObjectives.Trim();
+            if (request.MaterialsName != null) entry.MaterialsName = request.MaterialsName.Trim();
+            if (request.MaterialsUrl != null) entry.MaterialsUrl = request.MaterialsUrl.Trim();
             if (request.Status.HasValue) entry.Status = request.Status.Value;
             entry.UpdatedAt = DateTime.UtcNow;
 
             _unitOfWork.GetRepository<SchemeOfWorkEntry>().Update(entry);
             await _unitOfWork.SaveChangesAsync();
 
-            return _mapper.Map<SchemeOfWorkResponse>(entry);
+            return (await GetSchemeOfWork(entry.ClassSectionId, entry.AcademicTermId, null, currentUser)).First(s => s.Id == entry.Id);
         }
 
-        public async Task<bool> VetSchemeOfWork(Guid id, ClaimsPrincipal currentUser)
+        public async Task<SchemeOfWorkResponse> ReviewSchemeOfWork(Guid id, ReviewSchemeOfWorkRequest request, ClaimsPrincipal currentUser)
         {
+            ClassSectionHelper.ValidateCurriculumMutationAccess(currentUser, "review-scheme-of-work");
+
             var entry = await _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetByIdAsync(id);
             if (entry == null)
                 throw new KeyNotFoundException($"Scheme of work entry with id {id} not found.");
 
-            entry.VettedByHos = true;
-            entry.Status = SchemeStatus.InProgress;
+            if (request.Action == SchemeApprovalStatus.RevisionRequested && string.IsNullOrWhiteSpace(request.ReviewComment))
+            {
+                throw new ArgumentException("A review comment is mandatory when requesting revisions on a scheme of work.");
+            }
+
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var supervisorStaff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == currentUserId, include: q => q.Include(s => s.User));
+
+            var prevStatus = entry.ApprovalStatus.ToString();
+            entry.ApprovalStatus = request.Action;
+            entry.VettedByHos = (request.Action == SchemeApprovalStatus.Approved);
+            entry.VettedByStaffId = supervisorStaff?.Id;
+            entry.VettedAt = DateTime.UtcNow;
+            entry.ReviewComment = request.ReviewComment?.Trim();
+
+            if (request.Action == SchemeApprovalStatus.Approved)
+            {
+                entry.Status = SchemeStatus.InProgress;
+            }
             entry.UpdatedAt = DateTime.UtcNow;
 
+            var auditLog = new AcademicWorkflowAuditLog
+            {
+                Id = Guid.NewGuid(),
+                EntityType = "SchemeOfWorkEntry",
+                EntityId = entry.Id,
+                Action = request.Action.ToString(),
+                FromStatus = prevStatus,
+                ToStatus = request.Action.ToString(),
+                ActorStaffId = supervisorStaff?.Id,
+                ActorName = supervisorStaff?.User?.DisplayName ?? currentUser.Identity?.Name ?? "Academic Head",
+                ActorRole = currentUser.FindFirst(ClaimTypes.Role)?.Value ?? "academic_head",
+                Comments = request.ReviewComment,
+                Timestamp = DateTime.UtcNow
+            };
+
             _unitOfWork.GetRepository<SchemeOfWorkEntry>().Update(entry);
+            await _unitOfWork.GetRepository<AcademicWorkflowAuditLog>().AddAsync(auditLog);
             await _unitOfWork.SaveChangesAsync();
+
+            return (await GetSchemeOfWork(entry.ClassSectionId, entry.AcademicTermId, null, currentUser)).First(s => s.Id == entry.Id);
+        }
+
+        public async Task<bool> VetSchemeOfWork(Guid id, ClaimsPrincipal currentUser)
+        {
+            await ReviewSchemeOfWork(id, new ReviewSchemeOfWorkRequest { Action = SchemeApprovalStatus.Approved }, currentUser);
             return true;
         }
 
-        public async Task<IEnumerable<TimetableSlotResponse>> GetTimetable(Guid classId)
+        public async Task<IEnumerable<CurriculumCoverageReportResponse>> GetCoverageReport(Guid? classSectionId, Guid? termId, ClaimsPrincipal currentUser)
         {
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor)
+            {
+                if (roles.Contains("teacher"))
+                {
+                    string? currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == currentUserId);
+                    var assignedClass = staff != null ? await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id) : null;
+                    if (assignedClass == null)
+                    {
+                        return Enumerable.Empty<CurriculumCoverageReportResponse>();
+                    }
+
+                    if (classSectionId.HasValue && classSectionId.Value != Guid.Empty && classSectionId.Value != assignedClass.Id)
+                    {
+                        throw new UnauthorizedAccessException($"Access denied: You are assigned solely to {assignedClass.Name} and cannot view reports for another class.");
+                    }
+                    classSectionId = assignedClass.Id;
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Access denied: Only academic supervisors and assigned teachers can view curriculum coverage reports.");
+                }
+            }
+
+            var subjectsQuery = _unitOfWork.GetRepository<Subject>().GetQueryable();
+            var topicsQuery = _unitOfWork.GetRepository<CurriculumTopic>().GetQueryable(t => t.Active);
+            var schemeQuery = _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetQueryable();
+            var notesQuery = _unitOfWork.GetRepository<LessonNote>().GetQueryable();
+
+            if (termId.HasValue && termId.Value != Guid.Empty)
+            {
+                topicsQuery = topicsQuery.Where(t => t.AcademicTermId == termId.Value);
+                schemeQuery = schemeQuery.Where(s => s.AcademicTermId == termId.Value);
+                notesQuery = notesQuery.Where(n => n.AcademicTermId == termId.Value);
+            }
+
+            if (classSectionId.HasValue && classSectionId.Value != Guid.Empty)
+            {
+                schemeQuery = schemeQuery.Where(s => s.ClassSectionId == classSectionId.Value);
+                notesQuery = notesQuery.Where(n => n.ClassSectionId == classSectionId.Value);
+            }
+
+            var classes = await _unitOfWork.GetRepository<ClassSection>().GetQueryable(c => !classSectionId.HasValue || c.Id == classSectionId.Value).ToListAsync();
+            var subjects = await subjectsQuery.ToListAsync();
+            var topics = await topicsQuery.ToListAsync();
+            var schemes = await schemeQuery.ToListAsync();
+            var notes = await notesQuery.ToListAsync();
+
+            var report = new List<CurriculumCoverageReportResponse>();
+
+            foreach (var cls in classes)
+            {
+                foreach (var subj in subjects)
+                {
+                    var subjTopics = topics.Where(t => t.SubjectId == subj.Id && (t.ClassSectionId == null || t.ClassSectionId == cls.Id)).ToList();
+                    var subjSchemes = schemes.Where(s => s.ClassSectionId == cls.Id && (s.SubjectId == subj.Id || s.Topic.Contains(subj.Name))).ToList();
+                    var subjNotes = notes.Where(n => n.ClassSectionId == cls.Id && (n.SubjectId == subj.Id || n.Subject.Equals(subj.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+
+                    int planned = subjSchemes.Count;
+                    int approved = subjSchemes.Count(s => s.ApprovalStatus == SchemeApprovalStatus.Approved || s.VettedByHos);
+                    int delivered = subjNotes.Count(n => n.DeliveryStatus == LessonDeliveryStatus.Delivered);
+                    int pendingReviews = subjSchemes.Count(s => s.ApprovalStatus == SchemeApprovalStatus.Submitted) + subjNotes.Count(n => n.Status == LessonNoteStatus.Submitted || n.Status == LessonNoteStatus.UnderReview);
+                    int totalTopics = Math.Max(subjTopics.Count, planned);
+
+                    decimal coverage = totalTopics > 0 ? Math.Round((decimal)delivered / totalTopics * 100m, 1) : 0m;
+                    int behindSchedule = subjSchemes.Count(s => s.ApprovalStatus == SchemeApprovalStatus.Approved && !subjNotes.Any(n => n.SchemeOfWorkEntryId == s.Id && n.DeliveryStatus == LessonDeliveryStatus.Delivered));
+
+                    if (totalTopics > 0 || planned > 0 || delivered > 0)
+                    {
+                        report.Add(new CurriculumCoverageReportResponse
+                        {
+                            ClassSectionId = cls.Id,
+                            ClassSectionName = cls.Name,
+                            SubjectId = subj.Id,
+                            SubjectName = subj.Name,
+                            TotalCurriculumTopics = totalTopics,
+                            PlannedSchemeWeeks = planned,
+                            ApprovedSchemeWeeks = approved,
+                            DeliveredLessons = delivered,
+                            CoveragePercentage = coverage,
+                            PendingReviews = pendingReviews,
+                            TopicsBehindScheduleCount = behindSchedule
+                        });
+                    }
+                }
+            }
+
+            return report.OrderBy(r => r.ClassSectionName).ThenBy(r => r.SubjectName);
+        }
+
+        public async Task<IEnumerable<CurriculumAlertResponse>> GetCurriculumAlerts(Guid? classSectionId, ClaimsPrincipal currentUser)
+        {
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor)
+            {
+                if (roles.Contains("teacher"))
+                {
+                    string? currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == currentUserId);
+                    var assignedClass = staff != null ? await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id) : null;
+                    if (assignedClass == null)
+                    {
+                        return Enumerable.Empty<CurriculumAlertResponse>();
+                    }
+
+                    if (classSectionId.HasValue && classSectionId.Value != Guid.Empty && classSectionId.Value != assignedClass.Id)
+                    {
+                        throw new UnauthorizedAccessException($"Access denied: You are assigned solely to {assignedClass.Name} and cannot view alerts for another class.");
+                    }
+                    classSectionId = assignedClass.Id;
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Access denied: Only academic supervisors and assigned teachers can view curriculum alerts.");
+                }
+            }
+
+            var alerts = new List<CurriculumAlertResponse>();
+            var schemesQuery = _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetQueryable();
+            var notesQuery = _unitOfWork.GetRepository<LessonNote>().GetQueryable();
+
+            if (classSectionId.HasValue && classSectionId.Value != Guid.Empty)
+            {
+                schemesQuery = schemesQuery.Where(s => s.ClassSectionId == classSectionId.Value);
+                notesQuery = notesQuery.Where(n => n.ClassSectionId == classSectionId.Value);
+            }
+
+            var unvettedSchemes = await schemesQuery.Where(s => s.ApprovalStatus == SchemeApprovalStatus.Submitted)
+                .Select(s => new { s.Id, s.WeekLabel, s.Topic, ClassName = s.ClassSection != null ? s.ClassSection.Name : "Class" })
+                .Take(10)
+                .ToListAsync();
+
+            foreach (var item in unvettedSchemes)
+            {
+                alerts.Add(new CurriculumAlertResponse
+                {
+                    Type = "SchemeAwaitingReview",
+                    Severity = "Warning",
+                    Message = $"Scheme week {item.WeekLabel} ({item.Topic}) for {item.ClassName} is awaiting supervisor vetting.",
+                    TargetId = item.Id,
+                    TargetTitle = item.Topic
+                });
+            }
+
+            var pendingNotes = await notesQuery.Where(n => n.Status == LessonNoteStatus.Submitted || n.Status == LessonNoteStatus.UnderReview)
+                .Select(n => new { n.Id, n.NoteCode, n.Topic, ClassName = n.ClassSection != null ? n.ClassSection.Name : "Class" })
+                .Take(10)
+                .ToListAsync();
+
+            foreach (var item in pendingNotes)
+            {
+                alerts.Add(new CurriculumAlertResponse
+                {
+                    Type = "LessonNoteAwaitingReview",
+                    Severity = "Warning",
+                    Message = $"Lesson note {item.NoteCode} ({item.Topic}) for {item.ClassName} is pending supervisor approval.",
+                    TargetId = item.Id,
+                    TargetTitle = item.Topic
+                });
+            }
+
+            return alerts;
+        }
+
+        public async Task<IEnumerable<TimetableSlotResponse>> GetTimetable(Guid classId, ClaimsPrincipal currentUser)
+        {
+            await ClassSectionHelper.ValidateClassAccessForPortalUserAsync(_unitOfWork, currentUser, classId);
+
             var slots = await _unitOfWork.GetRepository<TimetableSlot>()
                 .GetQueryable(t => t.ClassSectionId == classId)
                 .Include(t => t.Teacher).ThenInclude(s => s!.User)
@@ -105,8 +436,28 @@ namespace SFMA_API.Services.Implementation
             return _mapper.Map<IEnumerable<TimetableSlotResponse>>(slots);
         }
 
-        public async Task<bool> UpdateTimetable(Guid classId, UpdateTimetableRequest request)
+        public async Task<bool> UpdateTimetable(Guid classId, UpdateTimetableRequest request, ClaimsPrincipal currentUser)
         {
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("Access denied: Authenticated user context is required to modify timetable.");
+            }
+
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor)
+            {
+                if (roles.Contains("teacher"))
+                {
+                    await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, classId);
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Access denied: Only academic supervisors or assigned teachers can modify class timetables.");
+                }
+            }
+
             var classSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, classId);
             var repo = _unitOfWork.GetRepository<TimetableSlot>();
             var existingSlots = await repo.GetQueryable(t => t.ClassSectionId == classId).ToListAsync();
@@ -163,96 +514,261 @@ namespace SFMA_API.Services.Implementation
             _notificationService = notificationService;
         }
 
-        public async Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(LessonNoteStatus? status, ClaimsPrincipal currentUser)
+        public async Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(LessonNoteStatus? status, Guid? classSectionId, Guid? schemeOfWorkEntryId, ClaimsPrincipal currentUser)
         {
-            var query = _unitOfWork.GetRepository<LessonNote>().GetQueryable()
-                .Include(l => l.Staff).ThenInclude(s => s.User)
-                .Include(l => l.ReviewedBy).ThenInclude(r => r!.User)
-                .AsQueryable();
+            var query = _unitOfWork.GetRepository<LessonNote>().GetQueryable();
 
             if (status.HasValue)
             {
                 query = query.Where(l => l.Status == status.Value);
             }
 
-            var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
-
-            // Supervisor role list comes from configuration — not hardcoded in logic
-            var isSupervisor = roles.Any(r => _schoolSettings.SupervisorRoles.Contains(r));
-
-            if (!isSupervisor && roles.Contains("teacher"))
+            if (classSectionId.HasValue && classSectionId.Value != Guid.Empty)
             {
-                var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+                query = query.Where(l => l.ClassSectionId == classSectionId.Value);
+            }
 
-                if (staff != null)
+            if (schemeOfWorkEntryId.HasValue && schemeOfWorkEntryId.Value != Guid.Empty)
+            {
+                query = query.Where(l => l.SchemeOfWorkEntryId == schemeOfWorkEntryId.Value);
+            }
+
+            var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
+            var isSupervisor = roles.Any(r => _schoolSettings.SupervisorRoles.Contains(r))
+                || roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head");
+
+            if (!isSupervisor)
+            {
+                string? currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (roles.Contains("teacher"))
                 {
-                    query = query.Where(l => l.StaffId == staff.Id);
+                    var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+
+                    if (staff != null)
+                    {
+                        var assignedClass = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
+                        var assignedClassId = assignedClass?.Id;
+
+                        if (classSectionId.HasValue && classSectionId.Value != Guid.Empty && assignedClassId.HasValue && classSectionId.Value != assignedClassId.Value)
+                        {
+                            throw new UnauthorizedAccessException($"Access denied: You are assigned solely to {assignedClass?.Name} and cannot view lesson notes for another class.");
+                        }
+
+                        query = query.Where(l => l.StaffId == staff.Id || (assignedClassId.HasValue && l.ClassSectionId == assignedClassId.Value));
+                    }
+                    else
+                    {
+                        return Enumerable.Empty<LessonNoteResponse>();
+                    }
+                }
+                else if (roles.Contains("student"))
+                {
+                    var student = await _unitOfWork.GetRepository<Student>().GetSingleByAsync(s => s.UserId == currentUserId);
+                    if (student == null)
+                    {
+                        return Enumerable.Empty<LessonNoteResponse>();
+                    }
+
+                    if (classSectionId.HasValue && classSectionId.Value != Guid.Empty && classSectionId.Value != student.ClassSectionId)
+                    {
+                        throw new UnauthorizedAccessException("Access denied: Students may only view lesson notes for their assigned class.");
+                    }
+
+                    query = query.Where(l => l.ClassSectionId == student.ClassSectionId && l.Status == LessonNoteStatus.Approved);
+                }
+                else if (roles.Contains("parent"))
+                {
+                    var parent = await _unitOfWork.GetRepository<Parent>().GetSingleByAsync(
+                        p => p.UserId == currentUserId,
+                        include: q => q.Include(p => p.StudentParents).ThenInclude(sp => sp.Student));
+
+                    if (parent == null || !parent.StudentParents.Any(sp => sp.Student != null))
+                    {
+                        return Enumerable.Empty<LessonNoteResponse>();
+                    }
+
+                    var allowedClassIds = parent.StudentParents
+                        .Where(sp => sp.Student != null)
+                        .Select(sp => sp.Student!.ClassSectionId)
+                        .Distinct()
+                        .ToList();
+
+                    if (classSectionId.HasValue && classSectionId.Value != Guid.Empty)
+                    {
+                        if (!allowedClassIds.Contains(classSectionId.Value))
+                        {
+                            throw new UnauthorizedAccessException("Access denied: Parents may only view lesson notes for classes containing their linked wards.");
+                        }
+                        query = query.Where(l => l.ClassSectionId == classSectionId.Value && l.Status == LessonNoteStatus.Approved);
+                    }
+                    else
+                    {
+                        query = query.Where(l => allowedClassIds.Contains(l.ClassSectionId) && l.Status == LessonNoteStatus.Approved);
+                    }
+                }
+                else
+                {
+                    return Enumerable.Empty<LessonNoteResponse>();
                 }
             }
 
-            var notes = await query.OrderByDescending(l => l.SubmittedAt).ToListAsync();
-            return _mapper.Map<IEnumerable<LessonNoteResponse>>(notes);
+            return await query
+                .OrderByDescending(l => l.SubmittedAt)
+                .Select(l => new LessonNoteResponse
+                {
+                    Id = l.Id,
+                    NoteCode = l.NoteCode,
+                    StaffId = l.StaffId,
+                    StaffName = l.Staff != null && l.Staff.User != null ? l.Staff.User.DisplayName : string.Empty,
+                    SubjectId = l.SubjectId,
+                    Subject = l.SubjectRef != null ? l.SubjectRef.Name : l.Subject,
+                    Topic = l.Topic,
+                    ClassSectionId = l.ClassSectionId,
+                    ClassSectionName = l.ClassSection != null ? l.ClassSection.Name : string.Empty,
+                    AcademicTermId = l.AcademicTermId,
+                    AcademicTermName = l.AcademicTerm != null ? $"Term {l.AcademicTerm.TermNumber} ({l.AcademicTerm.SessionName})" : string.Empty,
+                    SchemeOfWorkEntryId = l.SchemeOfWorkEntryId,
+                    WeekNumber = l.SchemeOfWorkEntry != null ? (short?)l.SchemeOfWorkEntry.WeekNumber : null,
+                    LessonDate = l.LessonDate,
+                    PeriodNumber = l.PeriodNumber,
+                    Objectives = l.Objectives,
+                    FileUrl = l.FileUrl,
+                    Status = l.Status,
+                    StatusLabel = l.Status.ToString(),
+                    DeliveryStatus = l.DeliveryStatus,
+                    DeliveryStatusLabel = l.DeliveryStatus.ToString(),
+                    DeliveredAt = l.DeliveredAt,
+                    DeliveryRemark = l.DeliveryRemark,
+                    ReviewedById = l.ReviewedById,
+                    ReviewedByName = l.ReviewedBy != null && l.ReviewedBy.User != null ? l.ReviewedBy.User.DisplayName : null,
+                    ReviewerComments = l.ReviewerComments,
+                    SubmittedAt = l.SubmittedAt,
+                    CreatedAt = l.CreatedAt
+                })
+                .ToListAsync();
         }
 
         public async Task<LessonNoteResponse> CreateLessonNote(CreateLessonNoteRequest request, ClaimsPrincipal currentUser)
         {
-            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
-            await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId);
+            if (request.SchemeOfWorkEntryId == Guid.Empty)
+            {
+                throw new ArgumentException("A lesson note must be linked to an approved scheme of work entry.");
+            }
+
+            var scheme = await _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetQueryable(s => s.Id == request.SchemeOfWorkEntryId)
+                .Include(s => s.Subject)
+                .FirstOrDefaultAsync();
+
+            if (scheme == null)
+            {
+                throw new KeyNotFoundException($"Scheme of work entry with id '{request.SchemeOfWorkEntryId}' not found.");
+            }
+
+            if (scheme.ApprovalStatus != SchemeApprovalStatus.Approved && !scheme.VettedByHos)
+            {
+                throw new InvalidOperationException("Lesson notes can only be created against an approved scheme of work entry.");
+            }
+
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, scheme.ClassSectionId);
 
             var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).Include(s => s.User).FirstOrDefaultAsync();
 
+            if (staff == null)
+            {
+                throw new UnauthorizedAccessException("Only active staff members can submit lesson notes.");
+            }
+
             var count = await _unitOfWork.GetRepository<LessonNote>().GetQueryable().CountAsync();
-            var note = _mapper.Map<LessonNote>(request);
-            note.Id = Guid.NewGuid();
-            note.NoteCode = $"LN-{(count + 1):D4}";
-            if (staff != null) note.StaffId = staff.Id;
-            if (!string.IsNullOrWhiteSpace(request.FileUrl))
+            var resolvedFileUrl = !string.IsNullOrWhiteSpace(request.FileUrl) ? request.FileUrl.Trim() : (!string.IsNullOrWhiteSpace(request.AttachmentUrl) ? request.AttachmentUrl.Trim() : null);
+            var resolvedObjectives = !string.IsNullOrWhiteSpace(request.Objectives) ? request.Objectives.Trim() : (!string.IsNullOrWhiteSpace(request.ContentSummary) ? request.ContentSummary.Trim() : scheme.LearningObjectives);
+
+            var note = new LessonNote
             {
-                note.FileUrl = request.FileUrl.Trim();
-            }
-            else if (!string.IsNullOrWhiteSpace(request.AttachmentUrl))
+                Id = Guid.NewGuid(),
+                NoteCode = $"LN-{(count + 1):D4}",
+                StaffId = staff.Id,
+                ClassSectionId = scheme.ClassSectionId,
+                AcademicTermId = scheme.AcademicTermId,
+                SubjectId = scheme.SubjectId ?? request.SubjectId,
+                SchemeOfWorkEntryId = scheme.Id,
+                Subject = !string.IsNullOrWhiteSpace(request.Subject) ? request.Subject.Trim() : (scheme.Subject?.Name ?? "General"),
+                Topic = !string.IsNullOrWhiteSpace(request.Topic) ? request.Topic.Trim() : scheme.Topic,
+                Objectives = resolvedObjectives,
+                FileUrl = resolvedFileUrl,
+                LessonDate = request.LessonDate ?? DateTime.UtcNow.Date,
+                PeriodNumber = request.PeriodNumber,
+                Status = LessonNoteStatus.Submitted,
+                DeliveryStatus = LessonDeliveryStatus.Planned,
+                SubmittedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var auditLog = new AcademicWorkflowAuditLog
             {
-                note.FileUrl = request.AttachmentUrl.Trim();
-            }
-            if (string.IsNullOrWhiteSpace(note.Objectives) && !string.IsNullOrWhiteSpace(request.ContentSummary))
-            {
-                note.Objectives = request.ContentSummary.Trim();
-            }
-            note.Status = LessonNoteStatus.Submitted;
-            note.SubmittedAt = DateTime.UtcNow;
-            note.CreatedAt = DateTime.UtcNow;
+                Id = Guid.NewGuid(),
+                EntityType = "LessonNote",
+                EntityId = note.Id,
+                Action = "Submitted",
+                ToStatus = LessonNoteStatus.Submitted.ToString(),
+                ActorStaffId = staff.Id,
+                ActorName = staff.User?.DisplayName ?? currentUser.Identity?.Name ?? "Teacher",
+                ActorRole = currentUser.FindFirst(ClaimTypes.Role)?.Value ?? "teacher",
+                Comments = $"Submitted lesson note '{note.NoteCode}' for topic: {note.Topic}",
+                Timestamp = DateTime.UtcNow
+            };
 
             await _unitOfWork.GetRepository<LessonNote>().AddAsync(note);
+            await _unitOfWork.GetRepository<AcademicWorkflowAuditLog>().AddAsync(auditLog);
             await _unitOfWork.SaveChangesAsync();
 
-            var response = _mapper.Map<LessonNoteResponse>(note);
-            if (staff?.User != null) response.StaffName = staff.User.DisplayName;
-            return response;
+            return (await GetLessonNotes(null, null, null, currentUser)).First(n => n.Id == note.Id);
         }
 
         public async Task<LessonNoteResponse> ReviewLessonNote(Guid id, ReviewLessonNoteRequest request, ClaimsPrincipal currentUser)
         {
+            ClassSectionHelper.ValidateCurriculumMutationAccess(currentUser, "review-lesson-note");
+
             var note = await _unitOfWork.GetRepository<LessonNote>().GetByIdAsync(id);
             if (note == null)
                 throw new KeyNotFoundException($"Lesson note with id {id} not found.");
 
-            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var supervisor = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
+            if (request.Status == LessonNoteStatus.RevisionRequested && string.IsNullOrWhiteSpace(request.ReviewerComments))
+            {
+                throw new ArgumentException("Reviewer comments are mandatory when requesting revision on a lesson note.");
+            }
 
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var supervisor = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).Include(s => s.User).FirstOrDefaultAsync();
+
+            var prevStatus = note.Status.ToString();
             note.Status = request.Status;
-            note.ReviewerComments = request.ReviewerComments;
+            note.ReviewerComments = request.ReviewerComments?.Trim();
             if (supervisor != null) note.ReviewedById = supervisor.Id;
             note.UpdatedAt = DateTime.UtcNow;
 
+            var auditLog = new AcademicWorkflowAuditLog
+            {
+                Id = Guid.NewGuid(),
+                EntityType = "LessonNote",
+                EntityId = note.Id,
+                Action = request.Status.ToString(),
+                FromStatus = prevStatus,
+                ToStatus = request.Status.ToString(),
+                ActorStaffId = supervisor?.Id,
+                ActorName = supervisor?.User?.DisplayName ?? currentUser.Identity?.Name ?? "Academic Head",
+                ActorRole = currentUser.FindFirst(ClaimTypes.Role)?.Value ?? "academic_head",
+                Comments = request.ReviewerComments,
+                Timestamp = DateTime.UtcNow
+            };
+
             _unitOfWork.GetRepository<LessonNote>().Update(note);
+            await _unitOfWork.GetRepository<AcademicWorkflowAuditLog>().AddAsync(auditLog);
             await _unitOfWork.SaveChangesAsync();
 
-            // Notify the submitting teacher about the review outcome
+            // Notify submitting teacher
             var teacher = await _unitOfWork.GetRepository<Staff>()
-                .GetSingleByAsync(s => s.Id == note.StaffId,
-                    include: q => q.Include(s => s.User));
+                .GetSingleByAsync(s => s.Id == note.StaffId, include: q => q.Include(s => s.User));
 
             if (teacher?.User?.Email != null)
             {
@@ -269,7 +785,76 @@ namespace SFMA_API.Services.Implementation
                     request.ReviewerComments));
             }
 
-            return _mapper.Map<LessonNoteResponse>(note);
+            return (await GetLessonNotes(null, null, null, currentUser)).First(n => n.Id == note.Id);
+        }
+
+        public async Task<LessonNoteResponse> MarkLessonDelivery(Guid id, MarkLessonDeliveryRequest request, ClaimsPrincipal currentUser)
+        {
+            var note = await _unitOfWork.GetRepository<LessonNote>().GetByIdAsync(id);
+            if (note == null)
+                throw new KeyNotFoundException($"Lesson note with id '{id}' not found.");
+
+            if (note.Status != LessonNoteStatus.Approved)
+            {
+                throw new InvalidOperationException("Only approved lesson notes can be marked for classroom delivery.");
+            }
+
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, note.ClassSectionId);
+
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == currentUserId, include: q => q.Include(s => s.User));
+
+            var prevDelivery = note.DeliveryStatus.ToString();
+            note.DeliveryStatus = request.DeliveryStatus;
+            note.DeliveredAt = request.DeliveredAt ?? (request.DeliveryStatus == LessonDeliveryStatus.Delivered ? DateTime.UtcNow : null);
+            note.DeliveryRemark = request.DeliveryRemark?.Trim();
+            note.UpdatedAt = DateTime.UtcNow;
+
+            _unitOfWork.GetRepository<LessonNote>().Update(note);
+
+            // Progress tracking: update scheme progress from delivered lessons
+            if (note.SchemeOfWorkEntryId.HasValue)
+            {
+                var scheme = await _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetByIdAsync(note.SchemeOfWorkEntryId.Value);
+                if (scheme != null)
+                {
+                    var allNotes = await _unitOfWork.GetRepository<LessonNote>().GetQueryable(l => l.SchemeOfWorkEntryId == scheme.Id).ToListAsync();
+                    bool allDelivered = allNotes.All(l => l.Id == note.Id
+                        ? (request.DeliveryStatus == LessonDeliveryStatus.Delivered)
+                        : (l.DeliveryStatus == LessonDeliveryStatus.Delivered));
+
+                    if (allDelivered && allNotes.Any())
+                    {
+                        scheme.Status = SchemeStatus.Completed;
+                    }
+                    else if (request.DeliveryStatus == LessonDeliveryStatus.Delivered || allNotes.Any(l => l.DeliveryStatus == LessonDeliveryStatus.Delivered))
+                    {
+                        scheme.Status = SchemeStatus.InProgress;
+                    }
+                    scheme.UpdatedAt = DateTime.UtcNow;
+                    _unitOfWork.GetRepository<SchemeOfWorkEntry>().Update(scheme);
+                }
+            }
+
+            var auditLog = new AcademicWorkflowAuditLog
+            {
+                Id = Guid.NewGuid(),
+                EntityType = "LessonNote",
+                EntityId = note.Id,
+                Action = "DeliveryRecorded",
+                FromStatus = prevDelivery,
+                ToStatus = request.DeliveryStatus.ToString(),
+                ActorStaffId = staff?.Id,
+                ActorName = staff?.User?.DisplayName ?? currentUser.Identity?.Name ?? "Teacher",
+                ActorRole = currentUser.FindFirst(ClaimTypes.Role)?.Value ?? "teacher",
+                Comments = request.DeliveryRemark ?? $"Lesson marked {request.DeliveryStatus}",
+                Timestamp = DateTime.UtcNow
+            };
+
+            await _unitOfWork.GetRepository<AcademicWorkflowAuditLog>().AddAsync(auditLog);
+            await _unitOfWork.SaveChangesAsync();
+
+            return (await GetLessonNotes(null, null, null, currentUser)).First(n => n.Id == note.Id);
         }
 
         public async Task<IEnumerable<AssignmentResponse>> GetAssignments(Guid classSectionId, ClaimsPrincipal currentUser)
@@ -309,11 +894,31 @@ namespace SFMA_API.Services.Implementation
             return response;
         }
 
-        public async Task<AssignmentResponse> UpdateAssignment(Guid id, UpdateAssignmentRequest request)
+        public async Task<AssignmentResponse> UpdateAssignment(Guid id, UpdateAssignmentRequest request, ClaimsPrincipal currentUser)
         {
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("Access denied: Authenticated user context is required to update assignments.");
+            }
+
             var assignment = await _unitOfWork.GetRepository<Assignment>().GetByIdAsync(id);
             if (assignment == null)
                 throw new KeyNotFoundException($"Assignment with id {id} not found.");
+
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor)
+            {
+                if (roles.Contains("teacher"))
+                {
+                    await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, assignment.ClassSectionId);
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Access denied: Only academic supervisors or assigned teachers can modify assignments.");
+                }
+            }
 
             _mapper.Map(request, assignment);
             assignment.UpdatedAt = DateTime.UtcNow;
@@ -775,10 +1380,28 @@ namespace SFMA_API.Services.Implementation
             return responses;
         }
 
-        public async Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request)
+        public async Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request, ClaimsPrincipal currentUser)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
+
+            if (currentUser == null)
+                throw new UnauthorizedAccessException("Access denied: Authenticated user context is required to modify school requirements.");
+
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor)
+            {
+                if (roles.Contains("teacher"))
+                {
+                    await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Access denied: Only academic administrators or assigned teachers can manage school requirements.");
+                }
+            }
 
             var classSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId, request.ClassName, request.AcademicTermId);
             Guid termId = request.AcademicTermId.HasValue && request.AcademicTermId.Value != Guid.Empty
@@ -831,12 +1454,30 @@ namespace SFMA_API.Services.Implementation
             return _mapper.Map<SchoolRequirementResponse>(item);
         }
 
-        public async Task<bool> DeleteSchoolRequirement(Guid id)
+        public async Task<bool> DeleteSchoolRequirement(Guid id, ClaimsPrincipal currentUser)
         {
+            if (currentUser == null)
+                throw new UnauthorizedAccessException("Access denied: Authenticated user context is required to delete school requirements.");
+
             var repo = _unitOfWork.GetRepository<SchoolRequirement>();
             var item = await repo.GetByIdAsync(id);
             if (item == null)
                 throw new KeyNotFoundException("School requirement not found.");
+
+            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+            bool isSupervisor = roles.Contains("super_admin") || roles.Contains("academic_admin") || roles.Contains("academic_head") || roles.Contains("admin");
+
+            if (!isSupervisor)
+            {
+                if (roles.Contains("teacher"))
+                {
+                    await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, item.ClassSectionId);
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Access denied: Only academic administrators or assigned teachers can delete school requirements.");
+                }
+            }
 
             var statusRepo = _unitOfWork.GetRepository<RequirementStatus>();
             await statusRepo.DeleteRangeAsync(s => s.RequirementId == id);

@@ -4,4 +4,5 @@
   <Project Path="SFMA_API.Logger/SFMA_API.Logger.csproj" />
   <Project Path="SFMA_API.Models/SFMA_API.Models.csproj" />
   <Project Path="SFMA_API.Services/SFMA_API.Services.csproj" />
+  <Project Path="SFMA_API.Tests/SFMA_API.Tests.csproj" />
 </Solution>

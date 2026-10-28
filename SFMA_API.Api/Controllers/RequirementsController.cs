@@ -35,7 +35,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpsertSchoolRequirement([FromBody] UpsertSchoolRequirementRequest request)
         {
-            var result = await _service.UpsertSchoolRequirement(request);
+            var result = await _service.UpsertSchoolRequirement(request, HttpContext.User);
             return Ok(result);
         }
 
@@ -44,7 +44,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> DeleteSchoolRequirement(Guid id)
         {
-            var result = await _service.DeleteSchoolRequirement(id);
+            var result = await _service.DeleteSchoolRequirement(id, HttpContext.User);
             return Ok(result);
         }
 

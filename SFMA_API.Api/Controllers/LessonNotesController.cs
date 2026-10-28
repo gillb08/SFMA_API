@@ -23,16 +23,19 @@ namespace SFMA_API.Api.Controllers
         }
 
         [HttpGet("", Name = "get-all-lesson-notes")]
-        [SwaggerOperation(Summary = "Get lesson notes with optional status filter")]
+        [SwaggerOperation(Summary = "Get lesson notes with optional status, class, or scheme filter")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetLessonNotes([FromQuery] LessonNoteStatus? status)
+        public async Task<IActionResult> GetLessonNotes(
+            [FromQuery] LessonNoteStatus? status,
+            [FromQuery] Guid? classSectionId,
+            [FromQuery] Guid? schemeOfWorkEntryId)
         {
-            var result = await _service.GetLessonNotes(status, HttpContext.User);
+            var result = await _service.GetLessonNotes(status, classSectionId, schemeOfWorkEntryId, HttpContext.User);
             return Ok(result);
         }
 
         [HttpPost("", Name = "create-lesson-note")]
-        [SwaggerOperation(Summary = "Submit lesson note for review")]
+        [SwaggerOperation(Summary = "Submit lesson note against an approved scheme of work entry")]
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateLessonNote([FromBody] CreateLessonNoteRequest request)
         {
@@ -48,6 +51,14 @@ namespace SFMA_API.Api.Controllers
             var result = await _service.ReviewLessonNote(id, request, HttpContext.User);
             return Ok(result);
         }
+
+        [HttpPost("{id:guid}/delivery", Name = "mark-lesson-delivery")]
+        [SwaggerOperation(Summary = "Record classroom lesson delivery and progress")]
+        [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> MarkLessonDelivery(Guid id, [FromBody] MarkLessonDeliveryRequest request)
+        {
+            var result = await _service.MarkLessonDelivery(id, request, HttpContext.User);
+            return Ok(result);
+        }
     }
 }
-

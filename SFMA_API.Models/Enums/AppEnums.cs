@@ -81,6 +81,23 @@ namespace SFMA_API.Models.Enums
         Completed = 3
     }
 
+    public enum SchemeApprovalStatus
+    {
+        Draft = 1,
+        Submitted = 2,
+        Approved = 3,
+        RevisionRequested = 4,
+        Archived = 5
+    }
+
+    public enum LessonDeliveryStatus
+    {
+        Planned = 1,
+        Delivered = 2,
+        NotDelivered = 3,
+        Rescheduled = 4
+    }
+
     public enum LessonNoteStatus
     {
         Submitted = 1,
