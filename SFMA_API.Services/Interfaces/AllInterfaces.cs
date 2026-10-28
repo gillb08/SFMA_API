@@ -39,7 +39,6 @@ namespace SFMA_API.Services.Interfaces
         Task<IEnumerable<string>> GetDivisions();
     }
 
-
     public interface IStaffService
     {
         Task<PagedResponse<StaffResponse>> GetAllStaff(string? department, string? roleKey, string? status, RequestParameters parameters);
@@ -169,11 +168,21 @@ namespace SFMA_API.Services.Interfaces
         Task<InquiryResponse> CreateInquiry(CreateInquiryRequest request, ClaimsPrincipal currentUser);
         Task<InquiryMessageResponse> AddInquiryMessage(Guid id, AddInquiryMessageRequest request, ClaimsPrincipal currentUser);
         Task<InquiryResponse> UpdateInquiryStatus(Guid id, UpdateInquiryStatusRequest request, ClaimsPrincipal currentUser);
-        Task<IEnumerable<SchoolRequirementResponse>> GetSchoolRequirements(Guid classSectionId, Guid? termId, Guid? studentId);
+        Task<IEnumerable<SchoolRequirementResponse>> GetSchoolRequirements(Guid classSectionId, Guid? termId, Guid? studentId, ClaimsPrincipal? currentUser = null);
         Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request);
         Task<bool> DeleteSchoolRequirement(Guid id);
         Task<bool> ToggleRequirementStatus(Guid requirementId, ToggleRequirementStatusRequest request, ClaimsPrincipal currentUser);
         Task<string> ExportRequirementsPdf(Guid classSectionId);
+    }
+
+    public interface ISubjectService
+    {
+        Task<IEnumerable<SubjectResponse>> GetAllSubjects(string? division = null, string? department = null, Guid? classSectionId = null, Guid? academicTermId = null, bool activeOnly = true);
+        Task<SubjectResponse?> GetSubjectById(Guid id);
+        Task<SubjectResponse> CreateSubject(CreateSubjectRequest request, ClaimsPrincipal? currentUser = null);
+        Task<SubjectResponse> UpdateSubject(Guid id, UpdateSubjectRequest request, ClaimsPrincipal? currentUser = null);
+        Task<bool> DeleteSubject(Guid id, ClaimsPrincipal? currentUser = null);
+        Task<SchoolConfigResponse> GetSchoolConfig(ClaimsPrincipal? currentUser = null);
     }
 
     public interface IDashboardService

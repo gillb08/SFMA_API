@@ -29,6 +29,7 @@ namespace SFMA_API.Data.SeedData
                 "logout", "get-current-user-profile", "change-password",
                 "get-all-terms", "get-active-term", "create-term", "update-term", "configure-deadlines",
                 "get-all-classes", "get-class-by-id", "create-class", "update-class", "delete-class", "get-all-divisions",
+                "get-all-subjects", "create-subject", "update-subject", "delete-subject", "get-school-config", "upload-file", "download-file",
                 "get-all-staff", "get-staff-by-id", "create-staff", "update-staff", "update-staff-status",
                 "get-all-roles", "get-role-permissions", "get-all-permissions", "get-all-role-claims", "get-role-claims-by-key", "update-role-claims", "update-user-claims",
                 "get-all-menus", "create-menu", "update-menu", "add-claims-to-menu",
@@ -50,6 +51,7 @@ namespace SFMA_API.Data.SeedData
             {
                 "logout", "get-current-user-profile", "change-password", "update-user-profile",
                 "get-all-terms", "get-active-term", "get-all-classes", "get-all-divisions",
+                "get-all-subjects", "get-school-config", "upload-file", "download-file",
                 "get-all-staff", "get-staff-by-id",
                 "get-all-students", "get-student-by-id", "get-student-id-card",
                 "get-fee-schedule", "upsert-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "get-student-receipts", "get-receipt-pdf", "get-bank-accounts", "upsert-bank-account", "get-student-statement",
@@ -63,6 +65,7 @@ namespace SFMA_API.Data.SeedData
             {
                 "logout", "get-current-user-profile", "change-password", "update-user-profile",
                 "get-all-terms", "get-active-term", "get-all-classes", "get-all-divisions",
+                "get-all-subjects", "get-school-config", "upload-file", "download-file",
                 "get-fee-schedule", "upsert-fee-schedule", "get-fee-ledger", "get-student-fee-summary", "get-bank-accounts", "upsert-bank-account", "verify-fee-teller",
                 "get-all-requisitions", "get-requisition-by-id", "create-requisition", "approve-requisition", "query-requisition", "upsert-department-budget",
                 "get-executive-dashboard", "get-financial-dashboard", "get-budget-progress",
@@ -73,6 +76,7 @@ namespace SFMA_API.Data.SeedData
                 "logout", "get-current-user-profile", "change-password", "update-user-profile",
                 "get-all-terms", "get-active-term", "create-term", "update-term", "configure-deadlines",
                 "get-all-classes", "get-class-by-id", "create-class", "update-class", "delete-class", "get-all-divisions",
+                "get-all-subjects", "create-subject", "update-subject", "delete-subject", "get-school-config", "upload-file", "download-file",
                 "get-all-staff", "get-staff-by-id",
                 "get-all-students", "get-student-by-id", "get-student-id-card", "batch-print-id-cards",
                 "get-daily-attendance", "get-student-monthly-attendance", "batch-mark-attendance", "lock-attendance-register", "unlock-attendance-register", "get-attendance-audit-logs", "export-attendance-csv",
@@ -90,6 +94,7 @@ namespace SFMA_API.Data.SeedData
             {
                 "logout", "get-current-user-profile", "change-password", "update-user-profile",
                 "get-all-terms", "get-active-term", "get-all-classes", "get-all-divisions",
+                "get-all-subjects", "get-school-config", "upload-file", "download-file",
                 "get-all-students", "get-student-by-id", "update-student-biodata", "get-student-id-card",
                 "get-daily-attendance", "get-student-monthly-attendance", "batch-mark-attendance", "lock-attendance-register", "export-attendance-csv",
                 "get-assessment-broadsheet", "batch-update-scores", "submit-broadsheet", "get-student-results", "export-broadsheet-results", "import-scores-csv", "get-score-template-csv",
@@ -106,6 +111,7 @@ namespace SFMA_API.Data.SeedData
             {
                 "logout", "get-current-user-profile", "change-password",
                 "get-all-terms", "get-active-term", "get-all-classes", "get-all-divisions",
+                "get-all-subjects", "get-school-config", "upload-file", "download-file",
                 "get-student-by-id", "get-student-id-card",
                 "get-student-monthly-attendance", "submit-absence-notice",
                 "get-student-results",
@@ -119,6 +125,7 @@ namespace SFMA_API.Data.SeedData
             {
                 "logout", "get-current-user-profile", "change-password",
                 "get-all-terms", "get-active-term", "get-all-classes", "get-all-divisions",
+                "get-all-subjects", "get-school-config", "upload-file", "download-file",
                 "get-student-by-id", "get-student-id-card",
                 "get-student-monthly-attendance", "submit-absence-notice",
                 "get-student-results",
@@ -133,10 +140,10 @@ namespace SFMA_API.Data.SeedData
         public AdminUserSeed AdminUser { get; set; } = new AdminUserSeed
         {
             DisplayName = "Super Administrator",
-            Email = "admin@stfaithacademy.edu.ng",
-            UserName = "admin@stfaithacademy.edu.ng",
+            Email = "admin@stfaithModelAcademy.com",
+            UserName = "admin@stfaithModelAcademy.com",
             Role = "super_admin",
-            Password = "Password@123!"
+            Password = "Password@123#"
         };
     }
 

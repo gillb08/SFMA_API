@@ -34,6 +34,53 @@ namespace SFMA_API.Models.Configuration
         /// </summary>
         public decimal DefaultDepartmentBudget { get; set; } = 0;
 
+        /// <summary>School operational hours label</summary>
+        public string SchoolHours { get; set; } = "07:30 AM – 02:30 PM";
+
+        /// <summary>Morning assembly / roll call cut-off time</summary>
+        public string AssemblyTime { get; set; } = "07:45 AM";
+
+        /// <summary>Standard school departments</summary>
+        public List<string> Departments { get; set; } = new()
+        {
+            "Primary Division",
+            "Nursery Division",
+            "Academic Directorate",
+            "Bursary & Finance",
+            "Executive Board",
+            "Academic Sciences",
+            "Facilities & ICT",
+            "Examination Office",
+            "Early Years Division",
+            "Sports & Co-curricular"
+        };
+
+        /// <summary>Standard school divisions</summary>
+        public List<string> Divisions { get; set; } = new()
+        {
+            "Early Years",
+            "Junior Basic",
+            "Senior Basic"
+        };
+
+        /// <summary>Supported document upload formats</summary>
+        public List<string> SupportedFileFormats { get; set; } = new()
+        {
+            "PDF",
+            "DOCX",
+            "JPG",
+            "PNG"
+        };
+
+        /// <summary>Inquiry routing categories and target roles</summary>
+        public List<string> InquiryRoutingRoles { get; set; } = new()
+        {
+            "Class Teacher",
+            "Head of School (Academics)",
+            "Bursar / Accounts Office",
+            "Proprietress / Administration"
+        };
+
         /// <summary>Resolves the portal redirect path for a role. Returns /portal if the role has no configured path.</summary>
         public string GetPortalRoute(string role)
         {

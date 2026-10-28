@@ -38,6 +38,59 @@ namespace SFMA_API.Data.SeedData
             // 0. Automatically apply any pending EF Core database migrations
             await context.Database.MigrateAsync();
 
+            // Ensure dynamic curriculum, uploaded files, and result publication schema extensions exist
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""Subjects"" (
+                    ""Id"" uuid NOT NULL,
+                    ""Name"" character varying(150) NOT NULL,
+                    ""Code"" character varying(50) NULL,
+                    ""Category"" character varying(100) NULL,
+                    ""Division"" character varying(100) NULL,
+                    ""Department"" character varying(100) NULL,
+                    ""ClassSectionId"" uuid NULL,
+                    ""AcademicTermId"" uuid NULL,
+                    ""SortOrder"" smallint NOT NULL DEFAULT 1,
+                    ""Active"" boolean NOT NULL DEFAULT TRUE,
+                    ""CreatedAt"" timestamp without time zone NOT NULL DEFAULT (now()),
+                    ""UpdatedAt"" timestamp without time zone NULL,
+                    CONSTRAINT ""PK_Subjects"" PRIMARY KEY (""Id""),
+                    CONSTRAINT ""FK_Subjects_ClassSections_ClassSectionId"" FOREIGN KEY (""ClassSectionId"") REFERENCES ""ClassSections"" (""Id"") ON DELETE SET NULL,
+                    CONSTRAINT ""FK_Subjects_AcademicTerms_AcademicTermId"" FOREIGN KEY (""AcademicTermId"") REFERENCES ""AcademicTerms"" (""Id"") ON DELETE SET NULL
+                );
+                ALTER TABLE ""Subjects"" ADD COLUMN IF NOT EXISTS ""Category"" character varying(100) NULL;
+                ALTER TABLE ""Subjects"" ADD COLUMN IF NOT EXISTS ""Division"" character varying(100) NULL;
+                ALTER TABLE ""Subjects"" ADD COLUMN IF NOT EXISTS ""Department"" character varying(100) NULL;
+                ALTER TABLE ""Subjects"" ADD COLUMN IF NOT EXISTS ""AcademicTermId"" uuid NULL;
+                ALTER TABLE ""Subjects"" ADD COLUMN IF NOT EXISTS ""SortOrder"" smallint NOT NULL DEFAULT 1;
+                CREATE INDEX IF NOT EXISTS ""IX_Subjects_Name"" ON ""Subjects"" (""Name"");
+                CREATE INDEX IF NOT EXISTS ""IX_Subjects_ClassSectionId"" ON ""Subjects"" (""ClassSectionId"");
+                CREATE INDEX IF NOT EXISTS ""IX_Subjects_AcademicTermId"" ON ""Subjects"" (""AcademicTermId"");
+
+                CREATE TABLE IF NOT EXISTS ""UploadedFiles"" (
+                    ""Id"" uuid NOT NULL,
+                    ""FileName"" character varying(260) NOT NULL,
+                    ""StoragePath"" character varying(500) NOT NULL,
+                    ""ContentType"" character varying(120) NOT NULL,
+                    ""FileSizeBytes"" bigint NOT NULL DEFAULT 0,
+                    ""Category"" character varying(80) NOT NULL,
+                    ""UploadedByUserId"" text NULL,
+                    ""StudentId"" uuid NULL,
+                    ""ClassSectionId"" uuid NULL,
+                    ""Active"" boolean NOT NULL DEFAULT TRUE,
+                    ""CreatedAt"" timestamp without time zone NOT NULL DEFAULT (now()),
+                    ""UpdatedAt"" timestamp without time zone NULL,
+                    CONSTRAINT ""PK_UploadedFiles"" PRIMARY KEY (""Id"")
+                );
+                ALTER TABLE ""UploadedFiles"" ADD COLUMN IF NOT EXISTS ""FileName"" character varying(260) NOT NULL DEFAULT '';
+                ALTER TABLE ""UploadedFiles"" ADD COLUMN IF NOT EXISTS ""StoragePath"" character varying(500) NOT NULL DEFAULT '';
+                ALTER TABLE ""UploadedFiles"" ADD COLUMN IF NOT EXISTS ""StudentId"" uuid NULL;
+                ALTER TABLE ""UploadedFiles"" ADD COLUMN IF NOT EXISTS ""ClassSectionId"" uuid NULL;
+
+                ALTER TABLE ""AssessmentScores"" ADD COLUMN IF NOT EXISTS ""PublishedAt"" timestamp without time zone NULL;
+                ALTER TABLE ""AssessmentScores"" ADD COLUMN IF NOT EXISTS ""ClassTeacherRemark"" character varying(1000) NULL;
+                ALTER TABLE ""AssessmentScores"" ADD COLUMN IF NOT EXISTS ""HosRemark"" character varying(1000) NULL;
+            ");
+
             // 1. Seed Roles & Role Claims
             foreach (string roleKey in seed.Roles)
             {

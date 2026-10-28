@@ -1,4 +1,3 @@
-using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using SFMA_API.Data.Interfaces;
 using SFMA_API.Models.Dtos.Request;
@@ -15,43 +14,48 @@ namespace SFMA_API.Services.Implementation
     public class ClassSectionService : IClassSectionService
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
 
-        public ClassSectionService(IUnitOfWork unitOfWork, IMapper mapper)
+        public ClassSectionService(IUnitOfWork unitOfWork)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
+        }
+
+        private static IQueryable<ClassSectionResponse> ProjectClasses(IQueryable<ClassSection> query)
+        {
+            return query.Select(c => new ClassSectionResponse
+            {
+                Id = c.Id,
+                Name = c.Name,
+                Division = c.Division,
+                HomeroomTeacherId = c.HomeroomTeacherId,
+                HomeroomTeacherName = c.HomeroomTeacher != null && c.HomeroomTeacher.User != null
+                    ? c.HomeroomTeacher.User.DisplayName
+                    : null,
+                AcademicTermId = c.AcademicTermId,
+                AcademicTermName = c.AcademicTerm != null
+                    ? (c.AcademicTerm.SessionName + " Term " + c.AcademicTerm.TermNumber)
+                    : null,
+                StudentCount = c.Students.Count
+            });
         }
 
         public async Task<IEnumerable<ClassSectionResponse>> GetAllClasses(Guid? termId = null)
         {
-            var query = _unitOfWork.GetRepository<ClassSection>().GetQueryable()
-                .Include(c => c.HomeroomTeacher)
-                    .ThenInclude(h => h!.User)
-                .Include(c => c.AcademicTerm)
-                .Include(c => c.Students)
-                .AsQueryable();
+            var query = _unitOfWork.GetRepository<ClassSection>().GetQueryable();
 
             if (termId.HasValue && termId.Value != Guid.Empty)
             {
                 query = query.Where(c => c.AcademicTermId == termId.Value);
             }
 
-            var list = await query.OrderBy(c => c.Name).ToListAsync();
-            return _mapper.Map<IEnumerable<ClassSectionResponse>>(list);
+            return await ProjectClasses(query.OrderBy(c => c.Name)).ToListAsync();
         }
 
         public async Task<ClassSectionResponse?> GetClassById(Guid id)
         {
-            var section = await _unitOfWork.GetRepository<ClassSection>().GetQueryable(c => c.Id == id)
-                .Include(c => c.HomeroomTeacher)
-                    .ThenInclude(h => h!.User)
-                .Include(c => c.AcademicTerm)
-                .Include(c => c.Students)
+            return await ProjectClasses(
+                _unitOfWork.GetRepository<ClassSection>().GetQueryable(c => c.Id == id))
                 .FirstOrDefaultAsync();
-
-            if (section == null) return null;
-            return _mapper.Map<ClassSectionResponse>(section);
         }
 
         public async Task<ClassSectionResponse> CreateClass(CreateClassSectionRequest request)
@@ -88,7 +92,6 @@ namespace SFMA_API.Services.Implementation
                 throw new InvalidOperationException($"A class named '{normalizedName}' already exists in this academic term.");
             }
 
-            // Enforce 1-Teacher = 1-Class: unassign teacher from any existing class
             if (request.HomeroomTeacherId.HasValue && request.HomeroomTeacherId.Value != Guid.Empty)
             {
                 var existingClassWithTeacher = await classRepo.GetSingleByAsync(c => c.HomeroomTeacherId == request.HomeroomTeacherId.Value);
@@ -114,7 +117,7 @@ namespace SFMA_API.Services.Implementation
             await classRepo.AddAsync(newSection);
             await _unitOfWork.SaveChangesAsync();
 
-            return await GetClassById(newSection.Id) ?? _mapper.Map<ClassSectionResponse>(newSection);
+            return (await GetClassById(newSection.Id))!;
         }
 
         public async Task<ClassSectionResponse> UpdateClass(Guid id, UpdateClassSectionRequest request)
@@ -142,7 +145,6 @@ namespace SFMA_API.Services.Implementation
                 throw new InvalidOperationException($"Another class named '{normalizedName}' already exists in this academic term.");
             }
 
-            // Enforce 1-Teacher = 1-Class: unassign teacher from any other class
             if (request.HomeroomTeacherId.HasValue && request.HomeroomTeacherId.Value != Guid.Empty && request.HomeroomTeacherId != section.HomeroomTeacherId)
             {
                 var otherClass = await classRepo.GetSingleByAsync(c => c.Id != id && c.HomeroomTeacherId == request.HomeroomTeacherId.Value);
@@ -163,24 +165,23 @@ namespace SFMA_API.Services.Implementation
             await classRepo.UpdateAsync(section);
             await _unitOfWork.SaveChangesAsync();
 
-            return await GetClassById(section.Id) ?? _mapper.Map<ClassSectionResponse>(section);
+            return (await GetClassById(section.Id))!;
         }
 
         public async Task<bool> DeleteClass(Guid id)
         {
             var classRepo = _unitOfWork.GetRepository<ClassSection>();
-            var section = await classRepo.GetQueryable(c => c.Id == id)
-                .Include(c => c.Students)
-                .FirstOrDefaultAsync();
+            var section = await classRepo.GetByIdAsync(id);
 
             if (section == null)
             {
                 throw new KeyNotFoundException($"Class section with ID '{id}' was not found.");
             }
 
-            if (section.Students.Any())
+            long enrolledCount = await _unitOfWork.GetRepository<Student>().CountAsync(s => s.ClassSectionId == id);
+            if (enrolledCount > 0)
             {
-                throw new InvalidOperationException($"Cannot delete '{section.Name}' because it currently has {section.Students.Count} enrolled student(s). Reassign or transfer students first.");
+                throw new InvalidOperationException($"Cannot delete '{section.Name}' because it currently has {enrolledCount} enrolled student(s). Reassign or transfer students first.");
             }
 
             await classRepo.DeleteAsync(section);

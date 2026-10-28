@@ -182,7 +182,7 @@ namespace SFMA_API.Services.Implementation
 
             if (!isSupervisor && roles.Contains("teacher"))
             {
-                var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
 
                 if (staff != null)
@@ -200,7 +200,7 @@ namespace SFMA_API.Services.Implementation
             await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
             await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId);
 
-            var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).Include(s => s.User).FirstOrDefaultAsync();
 
             var count = await _unitOfWork.GetRepository<LessonNote>().GetQueryable().CountAsync();
@@ -208,6 +208,18 @@ namespace SFMA_API.Services.Implementation
             note.Id = Guid.NewGuid();
             note.NoteCode = $"LN-{(count + 1):D4}";
             if (staff != null) note.StaffId = staff.Id;
+            if (!string.IsNullOrWhiteSpace(request.FileUrl))
+            {
+                note.FileUrl = request.FileUrl.Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(request.AttachmentUrl))
+            {
+                note.FileUrl = request.AttachmentUrl.Trim();
+            }
+            if (string.IsNullOrWhiteSpace(note.Objectives) && !string.IsNullOrWhiteSpace(request.ContentSummary))
+            {
+                note.Objectives = request.ContentSummary.Trim();
+            }
             note.Status = LessonNoteStatus.Submitted;
             note.SubmittedAt = DateTime.UtcNow;
             note.CreatedAt = DateTime.UtcNow;
@@ -226,7 +238,7 @@ namespace SFMA_API.Services.Implementation
             if (note == null)
                 throw new KeyNotFoundException($"Lesson note with id {id} not found.");
 
-            var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var supervisor = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
 
             note.Status = request.Status;
@@ -262,6 +274,8 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<IEnumerable<AssignmentResponse>> GetAssignments(Guid classSectionId, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateClassAccessForPortalUserAsync(_unitOfWork, currentUser, classSectionId);
+
             var assignments = await _unitOfWork.GetRepository<Assignment>().GetQueryable(a => a.ClassSectionId == classSectionId)
                 .Include(a => a.Staff).ThenInclude(s => s.User)
                 .Include(a => a.Submissions)
@@ -276,7 +290,7 @@ namespace SFMA_API.Services.Implementation
             await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassSectionId);
             await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, request.ClassSectionId);
 
-            var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var staff = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.UserId == currentUserId).Include(s => s.User).FirstOrDefaultAsync();
 
             var count = await _unitOfWork.GetRepository<Assignment>().GetQueryable().CountAsync();
@@ -319,7 +333,7 @@ namespace SFMA_API.Services.Implementation
             var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
             if (roles.Contains("student"))
             {
-                var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var student = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
                 if (student != null)
                 {
@@ -337,20 +351,15 @@ namespace SFMA_API.Services.Implementation
             if (assignment == null)
                 throw new KeyNotFoundException($"Assignment with id {assignmentId} not found.");
 
-            // Determine StudentId: Prefer explicit request.StudentId if valid, otherwise lookup by current user
             Guid studentId = Guid.Empty;
             if (request.StudentId != Guid.Empty)
             {
-                var targetStudent = await _unitOfWork.GetRepository<Student>().GetByIdAsync(request.StudentId);
-                if (targetStudent != null)
-                {
-                    studentId = targetStudent.Id;
-                }
+                var targetStudent = await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, request.StudentId);
+                studentId = targetStudent.Id;
             }
-
-            if (studentId == Guid.Empty)
+            else
             {
-                var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var student = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.UserId == currentUserId).FirstOrDefaultAsync();
                 if (student != null)
                 {
@@ -363,8 +372,6 @@ namespace SFMA_API.Services.Implementation
                 throw new InvalidOperationException("Could not identify a valid student record for assignment submission.");
             }
 
-            // FileName and FileType must be supplied by the caller.
-            // No silent defaults — a missing or mismatched type would corrupt submission metadata.
             if (string.IsNullOrWhiteSpace(request.FileName))
                 throw new ArgumentException("FileName is required when submitting an assignment.");
 
@@ -437,7 +444,7 @@ namespace SFMA_API.Services.Implementation
             }
 
             var roles = currentUser.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
-            var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
             if (roles.Contains("parent"))
             {
@@ -510,7 +517,7 @@ namespace SFMA_API.Services.Implementation
             {
                 if (currentUser?.Identity?.IsAuthenticated == true)
                 {
-                    var currentUserId = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    var currentUserId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                     var parent = await _unitOfWork.GetRepository<Parent>().GetQueryable(p => p.UserId == currentUserId).FirstOrDefaultAsync();
                     inquiry.ParentId = parent?.Id;
                 }
@@ -554,7 +561,7 @@ namespace SFMA_API.Services.Implementation
                 {
                     Id = Guid.NewGuid(),
                     InquiryId = inquiry.Id,
-                    SenderId = currentUser?.Identity?.IsAuthenticated == true ? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value : null,
+                    SenderId = currentUser?.Identity?.IsAuthenticated == true ? (currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value) : null,
                     SenderName = !string.IsNullOrWhiteSpace(inquiry.ParentName) ? inquiry.ParentName : "Prospective Parent",
                     SenderRole = inquiry.ParentId.HasValue ? "Parent" : "Prospect",
                     Message = request.Message,
@@ -610,10 +617,10 @@ namespace SFMA_API.Services.Implementation
             if (inquiry == null)
                 throw new KeyNotFoundException($"Inquiry with id {id} not found.");
 
-            var currentUserId = currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserId = currentUser?.FindFirst("Id")?.Value ?? currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var senderRoles = currentUser?.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList() ?? new List<string>();
             string senderDisplayName = currentUser?.FindFirst(ClaimTypes.Name)?.Value
-                ?? currentUser?.FindFirst("DisplayName")?.Value 
+                ?? currentUser?.FindFirst("DisplayName")?.Value
                 ?? (senderRoles.Contains("parent") ? "Parent" : "Staff");
 
             var message = new InquiryMessage
@@ -730,8 +737,17 @@ namespace SFMA_API.Services.Implementation
             return _mapper.Map<InquiryResponse>(inquiry);
         }
 
-        public async Task<IEnumerable<SchoolRequirementResponse>> GetSchoolRequirements(Guid classSectionId, Guid? termId, Guid? studentId)
+        public async Task<IEnumerable<SchoolRequirementResponse>> GetSchoolRequirements(Guid classSectionId, Guid? termId, Guid? studentId, ClaimsPrincipal? currentUser = null)
         {
+            if (studentId.HasValue && studentId.Value != Guid.Empty && currentUser != null)
+            {
+                await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, studentId.Value);
+            }
+            else if (currentUser != null)
+            {
+                await ClassSectionHelper.ValidateClassAccessForPortalUserAsync(_unitOfWork, currentUser, classSectionId);
+            }
+
             var query = _unitOfWork.GetRepository<SchoolRequirement>().GetQueryable(r => r.ClassSectionId == classSectionId);
 
             if (termId.HasValue)
@@ -831,6 +847,8 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> ToggleRequirementStatus(Guid requirementId, ToggleRequirementStatusRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, request.StudentId);
+
             var statusRepo = _unitOfWork.GetRepository<RequirementStatus>();
             var status = await statusRepo.GetQueryable(s => s.RequirementId == requirementId && s.StudentId == request.StudentId).FirstOrDefaultAsync();
 
@@ -861,10 +879,6 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<string> ExportRequirementsPdf(Guid classSectionId)
         {
-            // Previously this returned a hardcoded fake Base64 blob regardless of the class.
-            // Now it queries real requirements and returns a structured CSV payload.
-            // Full PDF generation (via a library such as QuestPDF or iText) should be
-            // implemented here when a PDF library is added to the project.
             var requirements = await _unitOfWork.GetRepository<SchoolRequirement>()
                 .GetQueryable(r => r.ClassSectionId == classSectionId)
                 .ToListAsync();
@@ -876,7 +890,6 @@ namespace SFMA_API.Services.Implementation
                 sb.AppendLine($"{req.ItemCode},{req.Title},{req.Category},{req.Author},{req.Publisher},{req.IsRequired}");
             }
 
-            // Return as Base64-encoded CSV until a proper PDF library is integrated
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()));
         }
     }
@@ -914,7 +927,6 @@ namespace SFMA_API.Services.Implementation
                 .GetQueryable(t => t.IsActive)
                 .FirstOrDefaultAsync();
 
-            // No hardcoded fallback term name — return null/empty if no active term is configured
             if (activeTerm == null)
             {
                 throw new KeyNotFoundException(
@@ -925,10 +937,8 @@ namespace SFMA_API.Services.Implementation
             var termName = $"Term {activeTerm.TermNumber} {activeTerm.SessionName}";
             var totalStudents = (int)await _unitOfWork.GetRepository<Student>().CountAsync();
 
-            // Assessment metrics from real database data
             var scores = await _unitOfWork.GetRepository<AssessmentScore>().GetQueryable().ToListAsync();
 
-            // Pass-mark threshold from configuration — not hardcoded as 50
             decimal passThreshold = _schoolSettings.PassMarkThreshold;
             decimal averageScore = scores.Any() ? Math.Round(scores.Average(s => s.TotalScore), 1) : 0m;
             decimal passRate = scores.Any()
@@ -936,14 +946,11 @@ namespace SFMA_API.Services.Implementation
                 : 0m;
             var distinctEvaluated = scores.Select(s => s.StudentId).Distinct().Count();
 
-            // Scheme vetting metrics from real database data
             var schemes = await _unitOfWork.GetRepository<SchemeOfWorkEntry>().GetQueryable().ToListAsync();
             decimal vettedRate = schemes.Any()
                 ? Math.Round((decimal)schemes.Count(s => s.VettedByHos) / schemes.Count * 100m, 1)
                 : 0m;
 
-            // Milestone attainment: count students with at least one acquired requirement
-            // Previously hardcoded as 96.2m — now computed from real RequirementStatus records
             var acquiredCount = await _unitOfWork.GetRepository<RequirementStatus>()
                 .GetQueryable(s => s.Acquired)
                 .Select(s => s.StudentId)
@@ -954,7 +961,6 @@ namespace SFMA_API.Services.Implementation
                 ? Math.Round((decimal)acquiredCount / totalStudents * 100m, 1)
                 : 0m;
 
-            // QA threshold from configuration — not hardcoded as 80
             decimal qaThreshold = _schoolSettings.QualityAssuranceVettingThreshold;
             string standing = vettedRate >= qaThreshold
                 ? "Approved for Terminal Examinations"
@@ -992,7 +998,6 @@ namespace SFMA_API.Services.Implementation
 
             var requisitions = await _unitOfWork.GetRepository<Requisition>().GetQueryable().ToListAsync();
 
-            // Load all configured department budgets for the active term in one query
             var departmentBudgets = activeTerm != null
                 ? await _unitOfWork.GetRepository<DepartmentBudget>()
                     .GetQueryable(b => b.AcademicTermId == activeTerm.Id)
@@ -1042,6 +1047,318 @@ namespace SFMA_API.Services.Implementation
                 TotalCollected = totalCollected,
                 TotalOutstanding = totalOutstanding,
                 UnpostedTellersCount = unpostedTellersCount
+            };
+        }
+    }
+
+    public class SubjectService : ISubjectService
+    {
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly SchoolSettings _schoolSettings;
+
+        public SubjectService(IUnitOfWork unitOfWork, IOptions<SchoolSettings> schoolSettings)
+        {
+            _unitOfWork = unitOfWork;
+            _schoolSettings = schoolSettings.Value;
+        }
+
+        public async Task<IEnumerable<SubjectResponse>> GetAllSubjects(
+            string? division = null,
+            string? department = null,
+            Guid? classSectionId = null,
+            Guid? academicTermId = null,
+            bool activeOnly = true)
+        {
+            var query = _unitOfWork.GetRepository<Subject>().GetQueryable();
+
+            if (activeOnly)
+            {
+                query = query.Where(s => s.Active);
+            }
+
+            if (classSectionId.HasValue && classSectionId.Value != Guid.Empty)
+            {
+                query = query.Where(s => s.ClassSectionId == null || s.ClassSectionId == classSectionId.Value);
+            }
+
+            if (academicTermId.HasValue && academicTermId.Value != Guid.Empty)
+            {
+                query = query.Where(s => s.AcademicTermId == null || s.AcademicTermId == academicTermId.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(division))
+            {
+                string normDiv = division.Trim().ToLower();
+                query = query.Where(s =>
+                    (s.Division != null && s.Division.ToLower() == normDiv)
+                    || (s.Category != null && s.Category.ToLower() == normDiv));
+            }
+
+            if (!string.IsNullOrWhiteSpace(department))
+            {
+                string normDept = department.Trim().ToLower();
+                query = query.Where(s =>
+                    (s.Department != null && s.Department.ToLower() == normDept)
+                    || (s.Category != null && s.Category.ToLower() == normDept));
+            }
+
+            return await query
+                .OrderBy(s => s.SortOrder)
+                .ThenBy(s => s.Name)
+                .Select(s => new SubjectResponse
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    Code = s.Code,
+                    Category = s.Category ?? s.Division ?? s.Department,
+                    Division = s.Division ?? s.Category,
+                    Department = s.Department,
+                    ClassSectionId = s.ClassSectionId,
+                    ClassSectionName = s.ClassSection != null ? s.ClassSection.Name : null,
+                    AcademicTermId = s.AcademicTermId,
+                    SortOrder = s.SortOrder,
+                    Active = s.Active
+                })
+                .ToListAsync();
+        }
+
+        public async Task<SubjectResponse?> GetSubjectById(Guid id)
+        {
+            if (id == Guid.Empty)
+            {
+                throw new ArgumentException("A valid subject ID is required.");
+            }
+
+            return await _unitOfWork.GetRepository<Subject>().GetQueryable(s => s.Id == id)
+                .Select(s => new SubjectResponse
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    Code = s.Code,
+                    Category = s.Category ?? s.Division ?? s.Department,
+                    Division = s.Division ?? s.Category,
+                    Department = s.Department,
+                    ClassSectionId = s.ClassSectionId,
+                    ClassSectionName = s.ClassSection != null ? s.ClassSection.Name : null,
+                    AcademicTermId = s.AcademicTermId,
+                    SortOrder = s.SortOrder,
+                    Active = s.Active
+                })
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<SubjectResponse> CreateSubject(CreateSubjectRequest request, ClaimsPrincipal? currentUser = null)
+        {
+            ClassSectionHelper.ValidateCurriculumMutationAccess(currentUser, "create-subject");
+
+            if (request == null || string.IsNullOrWhiteSpace(request.Name))
+            {
+                throw new ArgumentException("Subject name is required.");
+            }
+
+            string normalizedName = request.Name.Trim();
+            Guid? classId = (request.ClassSectionId.HasValue && request.ClassSectionId.Value != Guid.Empty) ? request.ClassSectionId.Value : null;
+            Guid? termId = (request.AcademicTermId.HasValue && request.AcademicTermId.Value != Guid.Empty) ? request.AcademicTermId.Value : null;
+
+            var repo = _unitOfWork.GetRepository<Subject>();
+            var existing = await repo.GetSingleByAsync(s =>
+                s.Name.ToLower() == normalizedName.ToLower() &&
+                s.ClassSectionId == classId);
+
+            if (existing != null)
+            {
+                existing.Active = request.Active ?? true;
+                if (!string.IsNullOrWhiteSpace(request.Code)) existing.Code = request.Code.Trim().ToUpperInvariant();
+                if (!string.IsNullOrWhiteSpace(request.Category)) existing.Category = request.Category.Trim();
+                if (!string.IsNullOrWhiteSpace(request.Division)) existing.Division = request.Division.Trim();
+                if (!string.IsNullOrWhiteSpace(request.Department)) existing.Department = request.Department.Trim();
+                if (termId.HasValue) existing.AcademicTermId = termId;
+                if (request.SortOrder.HasValue) existing.SortOrder = request.SortOrder.Value;
+                existing.UpdatedAt = DateTime.UtcNow;
+
+                await repo.UpdateAsync(existing);
+                await _unitOfWork.SaveChangesAsync();
+                return (await GetSubjectById(existing.Id))!;
+            }
+
+            long totalCount = await repo.CountAsync();
+            var subject = new Subject
+            {
+                Id = Guid.NewGuid(),
+                Name = normalizedName,
+                Code = !string.IsNullOrWhiteSpace(request.Code) ? request.Code.Trim().ToUpperInvariant() : null,
+                Category = !string.IsNullOrWhiteSpace(request.Category)
+                    ? request.Category.Trim()
+                    : (!string.IsNullOrWhiteSpace(request.Division) ? request.Division.Trim() : request.Department?.Trim()),
+                Division = !string.IsNullOrWhiteSpace(request.Division)
+                    ? request.Division.Trim()
+                    : request.Category?.Trim(),
+                Department = !string.IsNullOrWhiteSpace(request.Department) ? request.Department.Trim() : null,
+                ClassSectionId = classId,
+                AcademicTermId = termId,
+                SortOrder = request.SortOrder ?? (short)(totalCount + 1),
+                Active = request.Active ?? true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await repo.AddAsync(subject);
+            await _unitOfWork.SaveChangesAsync();
+
+            return (await GetSubjectById(subject.Id))!;
+        }
+
+        public async Task<SubjectResponse> UpdateSubject(Guid id, UpdateSubjectRequest request, ClaimsPrincipal? currentUser = null)
+        {
+            ClassSectionHelper.ValidateCurriculumMutationAccess(currentUser, "update-subject");
+
+            if (id == Guid.Empty)
+            {
+                throw new ArgumentException("A valid subject ID is required.");
+            }
+
+            if (request == null || string.IsNullOrWhiteSpace(request.Name))
+            {
+                throw new ArgumentException("Subject name is required.");
+            }
+
+            var repo = _unitOfWork.GetRepository<Subject>();
+            var existing = await repo.GetByIdAsync(id);
+            if (existing == null)
+            {
+                throw new KeyNotFoundException("Curriculum subject not found.");
+            }
+
+            existing.Name = request.Name.Trim();
+            existing.Code = !string.IsNullOrWhiteSpace(request.Code) ? request.Code.Trim().ToUpperInvariant() : existing.Code;
+            if (request.Category != null) existing.Category = string.IsNullOrWhiteSpace(request.Category) ? null : request.Category.Trim();
+            if (request.Division != null) existing.Division = string.IsNullOrWhiteSpace(request.Division) ? null : request.Division.Trim();
+            if (request.Department != null) existing.Department = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department.Trim();
+            existing.ClassSectionId = (request.ClassSectionId.HasValue && request.ClassSectionId.Value != Guid.Empty) ? request.ClassSectionId.Value : null;
+            if (request.AcademicTermId.HasValue)
+            {
+                existing.AcademicTermId = request.AcademicTermId.Value != Guid.Empty ? request.AcademicTermId.Value : null;
+            }
+            if (request.SortOrder.HasValue) existing.SortOrder = request.SortOrder.Value;
+            if (request.Active.HasValue) existing.Active = request.Active.Value;
+            existing.UpdatedAt = DateTime.UtcNow;
+
+            await repo.UpdateAsync(existing);
+            await _unitOfWork.SaveChangesAsync();
+
+            return (await GetSubjectById(existing.Id))!;
+        }
+
+        public async Task<bool> DeleteSubject(Guid id, ClaimsPrincipal? currentUser = null)
+        {
+            ClassSectionHelper.ValidateCurriculumMutationAccess(currentUser, "delete-subject");
+
+            if (id == Guid.Empty)
+            {
+                throw new ArgumentException("A valid subject ID is required.");
+            }
+
+            var repo = _unitOfWork.GetRepository<Subject>();
+            var existing = await repo.GetByIdAsync(id);
+            if (existing == null)
+            {
+                throw new KeyNotFoundException("Curriculum subject not found.");
+            }
+
+            repo.Delete(existing);
+            await _unitOfWork.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<SchoolConfigResponse> GetSchoolConfig(ClaimsPrincipal? currentUser = null)
+        {
+            var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetQueryable(t => t.IsActive && t.Active)
+                .Select(t => new TermResponse
+                {
+                    Id = t.Id,
+                    SessionName = t.SessionName,
+                    TermNumber = t.TermNumber,
+                    StartDate = t.StartDate,
+                    EndDate = t.EndDate,
+                    IsActive = t.IsActive,
+                    Cat1Deadline = t.Cat1Deadline,
+                    Cat2Deadline = t.Cat2Deadline,
+                    ExamDeadline = t.ExamDeadline
+                })
+                .FirstOrDefaultAsync();
+
+            var roles = currentUser?.Claims
+                .Where(c => c.Type == ClaimTypes.Role)
+                .Select(c => c.Value.ToLowerInvariant())
+                .ToList() ?? new List<string>();
+
+            bool isStaffOrManagement = roles.Contains("super_admin")
+                || roles.Contains("academic_admin")
+                || roles.Contains("academic_head")
+                || roles.Contains("financial_admin")
+                || roles.Contains("financial_head")
+                || roles.Contains("teacher");
+
+            List<InquiryRecipientResponse> recipients;
+            if (isStaffOrManagement)
+            {
+                recipients = await _unitOfWork.GetRepository<Staff>().GetQueryable(s => s.Active && s.User.Active)
+                    .OrderBy(s => s.Department)
+                    .Select(s => new InquiryRecipientResponse
+                    {
+                        StaffId = s.Id,
+                        DisplayName = s.User != null && !string.IsNullOrEmpty(s.User.DisplayName) ? s.User.DisplayName : s.Title,
+                        RoleLabel = !string.IsNullOrEmpty(s.Title)
+                            ? $"{s.Title} ({(s.User != null ? s.User.DisplayName : s.Title)})"
+                            : (s.User != null ? s.User.DisplayName : s.Title),
+                        Department = s.Department
+                    })
+                    .ToListAsync();
+            }
+            else
+            {
+                recipients = _schoolSettings.InquiryRoutingRoles
+                    .Select(role => new InquiryRecipientResponse
+                    {
+                        StaffId = null,
+                        DisplayName = role,
+                        RoleLabel = role,
+                        Department = "School Administration"
+                    })
+                    .ToList();
+            }
+
+            if (!recipients.Any())
+            {
+                recipients = _schoolSettings.InquiryRoutingRoles
+                    .Select(role => new InquiryRecipientResponse
+                    {
+                        StaffId = null,
+                        DisplayName = role,
+                        RoleLabel = role,
+                        Department = "School Administration"
+                    })
+                    .ToList();
+            }
+
+            var dynamicDivisions = await _unitOfWork.GetRepository<ClassSection>().GetQueryable(c => c.Active && !string.IsNullOrEmpty(c.Division))
+                .Select(c => c.Division)
+                .Distinct()
+                .ToListAsync();
+
+            var mergedDivisions = _schoolSettings.Divisions
+                .Union(dynamicDivisions, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return new SchoolConfigResponse
+            {
+                SchoolHours = _schoolSettings.SchoolHours,
+                AssemblyTime = _schoolSettings.AssemblyTime,
+                Departments = _schoolSettings.Departments,
+                Divisions = mergedDivisions,
+                SupportedFileFormats = _schoolSettings.SupportedFileFormats,
+                InquiryRoutingRoles = _schoolSettings.InquiryRoutingRoles,
+                InquiryRecipients = recipients,
+                ActiveTerm = activeTerm
             };
         }
     }

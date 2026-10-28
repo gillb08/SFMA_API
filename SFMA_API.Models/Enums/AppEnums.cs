@@ -1,4 +1,4 @@
-﻿namespace SFMA_API.Models.Enums
+namespace SFMA_API.Models.Enums
 {
     public enum UserStatus
     {
@@ -17,6 +17,7 @@
 
     public enum AttendanceStatus
     {
+        Unmarked = 0,
         Present = 1,
         Late = 2,
         Absent = 3

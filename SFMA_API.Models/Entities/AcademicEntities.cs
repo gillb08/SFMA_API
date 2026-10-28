@@ -1,4 +1,4 @@
-﻿using SFMA_API.Models.Enums;
+using SFMA_API.Models.Enums;
 using System;
 using System.Collections.Generic;
 
@@ -96,6 +96,9 @@ namespace SFMA_API.Models.Entities
         public Guid SubmittedById { get; set; }
         public AssessmentStatus Status { get; set; } = AssessmentStatus.Draft;
         public Guid? ApprovedById { get; set; }
+        public DateTime? PublishedAt { get; set; }
+        public string? ClassTeacherRemark { get; set; }
+        public string? HosRemark { get; set; }
 
         public virtual Student Student { get; set; } = null!;
         public virtual AcademicTerm AcademicTerm { get; set; } = null!;
@@ -189,5 +192,34 @@ namespace SFMA_API.Models.Entities
 
         public virtual Assignment Assignment { get; set; } = null!;
         public virtual Student Student { get; set; } = null!;
+    }
+
+    public class Subject : BaseEntity
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string Name { get; set; } = string.Empty;
+        public string? Code { get; set; }
+        public string? Category { get; set; }
+        public string? Division { get; set; }
+        public string? Department { get; set; }
+        public Guid? ClassSectionId { get; set; }
+        public Guid? AcademicTermId { get; set; }
+        public short SortOrder { get; set; } = 1;
+
+        public virtual ClassSection? ClassSection { get; set; }
+        public virtual AcademicTerm? AcademicTerm { get; set; }
+    }
+
+    public class UploadedFileRecord : BaseEntity
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = "application/octet-stream";
+        public long FileSizeBytes { get; set; }
+        public string StoragePath { get; set; } = string.Empty;
+        public string Category { get; set; } = "general";
+        public string? UploadedByUserId { get; set; }
+        public Guid? StudentId { get; set; }
+        public Guid? ClassSectionId { get; set; }
     }
 }

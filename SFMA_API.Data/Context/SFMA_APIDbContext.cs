@@ -47,6 +47,8 @@ namespace SFMA_API.Data.Context
         public virtual DbSet<BankAccount> BankAccounts { get; set; } = null!;
         public virtual DbSet<Menu> Menus { get; set; } = null!;
         public virtual DbSet<DepartmentBudget> DepartmentBudgets { get; set; } = null!;
+        public virtual DbSet<Subject> Subjects { get; set; } = null!;
+        public virtual DbSet<UploadedFileRecord> UploadedFiles { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -420,6 +422,27 @@ namespace SFMA_API.Data.Context
                     .WithMany()
                     .HasForeignKey(b => b.AcademicTermId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Subject>(entity =>
+            {
+                entity.HasIndex(s => new { s.Name, s.ClassSectionId }).IsUnique();
+                entity.HasOne(s => s.ClassSection)
+                    .WithMany()
+                    .HasForeignKey(s => s.ClassSectionId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(s => s.AcademicTerm)
+                    .WithMany()
+                    .HasForeignKey(s => s.AcademicTermId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<UploadedFileRecord>(entity =>
+            {
+                entity.Property(f => f.FileName).HasMaxLength(260);
+                entity.Property(f => f.ContentType).HasMaxLength(120);
+                entity.Property(f => f.StoragePath).HasMaxLength(500);
+                entity.Property(f => f.Category).HasMaxLength(80);
             });
         }
     }

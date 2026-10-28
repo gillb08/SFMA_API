@@ -24,8 +24,8 @@ namespace SFMA_API.Services.Implementation
     // ─────────────────────────────────────────────────────────────────────────
     internal static class AttendanceConstants
     {
-        public const string AuditActionUnlock        = "Register Unlocked for Roll Correction";
-        public const string InquiryCategoryAbsence   = "Absence Notice";
+        public const string AuditActionUnlock         = "Register Unlocked for Roll Correction";
+        public const string InquiryCategoryAbsence    = "Absence Notice";
         public const string TimelineLabelAbsenceFiled = "Absence Notice Filed";
     }
 
@@ -44,15 +44,47 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<IEnumerable<AttendanceRecordResponse>> GetAttendance(Guid classId, DateTime date, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, classId);
+
             var records = await _unitOfWork.GetRepository<AttendanceRecord>().GetByAsync(
                 a => a.ClassSectionId == classId && a.Date.Date == date.Date,
                 include: q => q.Include(a => a.Student).Include(a => a.RecordedBy).ThenInclude(r => r.User));
 
-            return _mapper.Map<IEnumerable<AttendanceRecordResponse>>(records);
+            var mappedRecords = _mapper.Map<List<AttendanceRecordResponse>>(records);
+            var recordedStudentIds = mappedRecords.Select(r => r.StudentId).ToHashSet();
+
+            var enrolledStudents = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.ClassSectionId == classId)
+                .OrderBy(s => s.StudentCode)
+                .Select(s => new { s.Id, s.FullName, s.StudentCode })
+                .ToListAsync();
+
+            foreach (var student in enrolledStudents)
+            {
+                if (!recordedStudentIds.Contains(student.Id))
+                {
+                    mappedRecords.Add(new AttendanceRecordResponse
+                    {
+                        Id = Guid.Empty,
+                        StudentId = student.Id,
+                        StudentName = student.FullName,
+                        StudentCode = student.StudentCode,
+                        ClassSectionId = classId,
+                        Date = date.Date,
+                        Status = AttendanceStatus.Unmarked,
+                        ArrivalTime = null,
+                        Notes = null,
+                        Locked = false
+                    });
+                }
+            }
+
+            return mappedRecords.OrderBy(r => r.StudentCode).ToList();
         }
 
         public async Task<IEnumerable<AttendanceRecordResponse>> GetStudentMonthlyAttendance(Guid studentId, int month, int year, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, studentId);
+
             var records = await _unitOfWork.GetRepository<AttendanceRecord>().GetByAsync(
                 a => a.StudentId == studentId && a.Date.Month == month && a.Date.Year == year,
                 include: q => q.Include(a => a.Student).Include(a => a.RecordedBy).ThenInclude(r => r.User),
@@ -102,6 +134,11 @@ namespace SFMA_API.Services.Implementation
             int updatedCount = 0;
             foreach (var item in request.Records)
             {
+                if (item.Status == AttendanceStatus.Unmarked)
+                {
+                    continue;
+                }
+
                 var record = existingRecords.FirstOrDefault(r => r.StudentId == item.StudentId);
                 if (record == null)
                 {
@@ -239,6 +276,8 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> SubmitAbsenceNotice(AbsenceNoticeRequest request, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, request.StudentId);
+
             var student = await _unitOfWork.GetRepository<Student>()
                 .GetQueryable(s => s.Id == request.StudentId)
                 .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent)
@@ -248,7 +287,7 @@ namespace SFMA_API.Services.Implementation
             if (student == null)
                 return false;
 
-            var currentUserId = currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserId = currentUser?.FindFirst("Id")?.Value ?? currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var parent = student.StudentParents.Select(sp => sp.Parent).FirstOrDefault(p => p.UserId == currentUserId)
                          ?? student.StudentParents.Select(sp => sp.Parent).FirstOrDefault();
 
@@ -343,11 +382,39 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<IEnumerable<AssessmentScoreResponse>> GetBroadsheet(Guid classId, string subject, Guid termId, ClaimsPrincipal currentUser)
         {
-            var scores = await _unitOfWork.GetRepository<AssessmentScore>().GetByAsync(
-                a => a.Student.ClassSectionId == classId && a.Subject.ToLower() == subject.ToLower() && a.AcademicTermId == termId,
-                include: q => q.Include(a => a.Student).Include(a => a.ApprovedBy).ThenInclude(ab => ab!.User));
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, classId);
 
-            return _mapper.Map<IEnumerable<AssessmentScoreResponse>>(scores);
+            return await _unitOfWork.GetRepository<AssessmentScore>().GetQueryable(
+                a => a.Student.ClassSectionId == classId && a.Subject.ToLower() == subject.ToLower() && a.AcademicTermId == termId)
+                .Select(a => new AssessmentScoreResponse
+                {
+                    Id = a.Id,
+                    StudentId = a.StudentId,
+                    StudentName = a.Student != null ? a.Student.FullName : string.Empty,
+                    StudentCode = a.Student != null ? a.Student.StudentCode : string.Empty,
+                    Subject = a.Subject,
+                    Ca1Score = a.Ca1Score,
+                    Ca2Score = a.Ca2Score,
+                    ProjectScore = a.ProjectScore,
+                    ExamScore = a.ExamScore,
+                    TotalScore = a.TotalScore,
+                    Grade = a.Grade,
+                    Remark = a.Remark,
+                    Status = a.Status,
+                    ApprovedByName = a.ApprovedBy != null && a.ApprovedBy.User != null ? a.ApprovedBy.User.DisplayName : null,
+                    AcademicTermId = a.AcademicTermId,
+                    AcademicTermName = a.AcademicTerm != null ? $"Term {a.AcademicTerm.TermNumber} ({a.AcademicTerm.SessionName})" : string.Empty,
+                    SessionName = a.AcademicTerm != null ? a.AcademicTerm.SessionName : string.Empty,
+                    TermNumber = a.AcademicTerm != null ? (int?)a.AcademicTerm.TermNumber : null,
+                    PublishedAt = a.PublishedAt,
+                    ClassTeacherName = a.Student != null && a.Student.ClassSection != null && a.Student.ClassSection.HomeroomTeacher != null && a.Student.ClassSection.HomeroomTeacher.User != null
+                        ? a.Student.ClassSection.HomeroomTeacher.User.DisplayName
+                        : null,
+                    ClassTeacherRemark = a.ClassTeacherRemark ?? a.Remark,
+                    HosName = a.ApprovedBy != null && a.ApprovedBy.User != null ? a.ApprovedBy.User.DisplayName : null,
+                    HosRemark = a.HosRemark
+                })
+                .ToListAsync();
         }
 
         public async Task<BatchUpdateAssessmentsResponse> BatchUpdateScores(BatchUpdateAssessmentsRequest request, ClaimsPrincipal currentUser)
@@ -417,6 +484,7 @@ namespace SFMA_API.Services.Implementation
                         TotalScore = total,
                         Grade = grade,
                         Remark = item.Remark,
+                        ClassTeacherRemark = item.Remark,
                         AcademicTermId = request.TermId,
                         SubmittedById = staff.Id,
                         Status = AssessmentStatus.Draft
@@ -431,7 +499,11 @@ namespace SFMA_API.Services.Implementation
                     if (item.Exam.HasValue) record.ExamScore = item.Exam;
                     record.TotalScore = total;
                     record.Grade = grade;
-                    if (item.Remark != null) record.Remark = item.Remark;
+                    if (item.Remark != null)
+                    {
+                        record.Remark = item.Remark;
+                        record.ClassTeacherRemark = item.Remark;
+                    }
                     record.UpdatedAt = DateTime.UtcNow;
                     await assessmentRepo.UpdateAsync(record);
                 }
@@ -463,6 +535,10 @@ namespace SFMA_API.Services.Implementation
             foreach (var score in scores)
             {
                 score.Status = AssessmentStatus.Submitted;
+                if (!string.IsNullOrWhiteSpace(request.Remark))
+                {
+                    score.ClassTeacherRemark = request.Remark.Trim();
+                }
                 score.UpdatedAt = DateTime.UtcNow;
                 await _unitOfWork.GetRepository<AssessmentScore>().UpdateAsync(score);
             }
@@ -472,17 +548,58 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<bool> ApproveBroadsheet(BroadsheetActionRequest request, ClaimsPrincipal currentUser)
         {
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("Access denied: Authenticated user context is required to approve and publish results.");
+            }
+
+            var roles = currentUser.Claims
+                .Where(c => c.Type == ClaimTypes.Role)
+                .Select(c => c.Value.ToLowerInvariant())
+                .ToList();
+
+            bool isAuthorizedSupervisor = roles.Contains("super_admin")
+                || roles.Contains("academic_admin")
+                || roles.Contains("academic_head");
+
+            bool hasApprovePermission = currentUser.Claims.Any(c =>
+                (c.Type == "Permission" || c.Type == "permission" || c.Type == "claims")
+                && (string.Equals(c.Value, "all", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Value, "approve-broadsheet", StringComparison.OrdinalIgnoreCase)));
+
+            if (!isAuthorizedSupervisor && !hasApprovePermission)
+            {
+                throw new UnauthorizedAccessException("Access denied: Only academic supervisors or head of school are authorized to approve and publish broadsheet results.");
+            }
+
+            await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, request.ClassId);
+
             string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                throw new UnauthorizedAccessException("Access denied: Unable to resolve approver identity.");
+            }
+
             var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
+            if (staff == null)
+            {
+                throw new InvalidOperationException("Approver account does not have a verified staff profile to sign off on broadsheet publication.");
+            }
 
             var scores = await _unitOfWork.GetRepository<AssessmentScore>().GetByAsync(
                 a => a.Student.ClassSectionId == request.ClassId && a.Subject.ToLower() == request.Subject.ToLower() && a.AcademicTermId == request.TermId);
 
+            var publishedTimestamp = DateTime.UtcNow;
             foreach (var score in scores)
             {
-                score.Status = AssessmentStatus.Approved;
-                score.ApprovedById = staff?.Id;
-                score.UpdatedAt = DateTime.UtcNow;
+                score.Status = AssessmentStatus.Published;
+                score.ApprovedById = staff.Id;
+                score.PublishedAt = publishedTimestamp;
+                if (!string.IsNullOrWhiteSpace(request.Remark))
+                {
+                    score.HosRemark = request.Remark.Trim();
+                }
+                score.UpdatedAt = publishedTimestamp;
                 await _unitOfWork.GetRepository<AssessmentScore>().UpdateAsync(score);
             }
             await _unitOfWork.SaveChangesAsync();
@@ -523,20 +640,48 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<IEnumerable<AssessmentScoreResponse>> GetStudentResults(Guid studentId, Guid? termId, ClaimsPrincipal currentUser)
         {
-            var query = _unitOfWork.GetRepository<AssessmentScore>().GetQueryable(
-                a => a.StudentId == studentId,
-                include: q => q.Include(a => a.Student).Include(a => a.ApprovedBy).ThenInclude(ab => ab!.User));
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, studentId);
 
-            var isStaff = currentUser.IsInRole("super_admin") || currentUser.IsInRole("academic_admin") || currentUser.IsInRole("academic_head") || currentUser.IsInRole("teacher");
+            var query = _unitOfWork.GetRepository<AssessmentScore>().GetQueryable(a => a.StudentId == studentId);
+
+            var isStaff = currentUser != null && (currentUser.IsInRole("super_admin") || currentUser.IsInRole("academic_admin") || currentUser.IsInRole("academic_head") || currentUser.IsInRole("teacher"));
             if (!isStaff)
             {
-                query = query.Where(a => a.Status == AssessmentStatus.Approved || a.Status == AssessmentStatus.Published);
+                query = query.Where(a => a.Status == AssessmentStatus.Published);
             }
 
             if (termId.HasValue) query = query.Where(a => a.AcademicTermId == termId.Value);
 
-            var scores = await query.ToListAsync();
-            return _mapper.Map<IEnumerable<AssessmentScoreResponse>>(scores);
+            return await query
+                .Select(a => new AssessmentScoreResponse
+                {
+                    Id = a.Id,
+                    StudentId = a.StudentId,
+                    StudentName = a.Student != null ? a.Student.FullName : string.Empty,
+                    StudentCode = a.Student != null ? a.Student.StudentCode : string.Empty,
+                    Subject = a.Subject,
+                    Ca1Score = a.Ca1Score,
+                    Ca2Score = a.Ca2Score,
+                    ProjectScore = a.ProjectScore,
+                    ExamScore = a.ExamScore,
+                    TotalScore = a.TotalScore,
+                    Grade = a.Grade,
+                    Remark = a.Remark,
+                    Status = a.Status,
+                    ApprovedByName = a.ApprovedBy != null && a.ApprovedBy.User != null ? a.ApprovedBy.User.DisplayName : null,
+                    AcademicTermId = a.AcademicTermId,
+                    AcademicTermName = a.AcademicTerm != null ? $"Term {a.AcademicTerm.TermNumber} ({a.AcademicTerm.SessionName})" : string.Empty,
+                    SessionName = a.AcademicTerm != null ? a.AcademicTerm.SessionName : string.Empty,
+                    TermNumber = a.AcademicTerm != null ? (int?)a.AcademicTerm.TermNumber : null,
+                    PublishedAt = a.PublishedAt,
+                    ClassTeacherName = a.Student != null && a.Student.ClassSection != null && a.Student.ClassSection.HomeroomTeacher != null && a.Student.ClassSection.HomeroomTeacher.User != null
+                        ? a.Student.ClassSection.HomeroomTeacher.User.DisplayName
+                        : null,
+                    ClassTeacherRemark = a.ClassTeacherRemark ?? a.Remark,
+                    HosName = a.ApprovedBy != null && a.ApprovedBy.User != null ? a.ApprovedBy.User.DisplayName : null,
+                    HosRemark = a.HosRemark
+                })
+                .ToListAsync();
         }
 
         public async Task<string> ExportResults(Guid classId, string subject, Guid termId, string format)
@@ -619,4 +764,3 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
-

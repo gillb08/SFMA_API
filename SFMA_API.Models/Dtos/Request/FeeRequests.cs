@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace SFMA_API.Models.Dtos.Request
 {
-public class PostTellerRequest
+    public class PostTellerRequest
     {
         public Guid StudentId { get; set; }
         public Guid? AcademicTermId { get; set; }
@@ -17,15 +17,16 @@ public class PostTellerRequest
         public string PaymentMethod { get; set; } = "Bank Transfer";
         public string? Notes { get; set; }
         public string? AttachmentFile { get; set; }
+        public string? AttachmentUrl { get; set; }
     }
 
-public class VerifyTellerRequest
+    public class VerifyTellerRequest
     {
         public string Status { get; set; } = "verified";
         public string? Notes { get; set; }
     }
 
-public class QueuePaymentRemindersRequest
+    public class QueuePaymentRemindersRequest
     {
         public Guid AcademicTermId { get; set; }
         public decimal? MinBalance { get; set; }

@@ -160,61 +160,118 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<StudentFeeSummaryResponse> GetStudentFeeSummary(Guid studentId, ClaimsPrincipal currentUser)
         {
-            var student = await _unitOfWork.GetRepository<Student>().GetByIdAsync(studentId);
-            if (student == null)
-            {
-                throw new KeyNotFoundException("Student not found");
-            }
+            var student = await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, studentId);
 
-            var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive)
+            var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive && t.Active)
                 ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
 
-            var feeSchedule = await _unitOfWork.GetRepository<FeeSchedule>().GetSingleByAsync(
-                f => f.AcademicTermId == activeTerm!.Id && (f.ClassSectionId == student.ClassSectionId || f.ClassSectionId == null),
-                orderBy: q => q.OrderByDescending(f => f.ClassSectionId.HasValue),
-                include: q => q.Include(f => f.FeeItems));
-
-            // No silent fallback — if there is no fee schedule the data would be wrong.
-            // Administrators must configure a fee schedule for the active term before summaries can be served.
-            if (feeSchedule == null)
+            FeeSchedule? feeSchedule = null;
+            if (activeTerm != null)
             {
-                throw new KeyNotFoundException(
-                    "No fee schedule has been configured for this student's class and the current active term. " +
-                    "Please set up a fee schedule before viewing student fee summaries.");
+                feeSchedule = await _unitOfWork.GetRepository<FeeSchedule>().GetSingleByAsync(
+                    f => f.AcademicTermId == activeTerm.Id && (f.ClassSectionId == student.ClassSectionId || f.ClassSectionId == null),
+                    orderBy: q => q.OrderByDescending(f => f.ClassSectionId.HasValue),
+                    include: q => q.Include(f => f.FeeItems));
             }
 
-            decimal totalBilled = feeSchedule.TotalAmount;
+            var feeItems = feeSchedule != null
+                ? feeSchedule.FeeItems
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => new FeeItemResponse
+                    {
+                        Id = i.Id,
+                        Name = i.Name,
+                        Amount = i.Amount,
+                        SortOrder = i.SortOrder
+                    })
+                    .ToList()
+                : new List<FeeItemResponse>();
 
-            var transactions = await _unitOfWork.GetRepository<FeeTransaction>().GetByAsync(
-                f => f.StudentId == studentId,
-                include: q => q.Include(f => f.Student).Include(f => f.VerifiedBy).ThenInclude(v => v!.User),
-                orderBy: q => q.OrderByDescending(f => f.PaymentDate));
+            decimal totalBilled = feeSchedule?.TotalAmount ?? 0m;
+
+            var transactions = await _unitOfWork.GetRepository<FeeTransaction>().GetQueryable(f => f.StudentId == studentId)
+                .OrderByDescending(f => f.PaymentDate)
+                .Select(f => new FeeTransactionResponse
+                {
+                    Id = f.Id,
+                    StudentId = f.StudentId,
+                    StudentName = f.Student != null ? f.Student.FullName : student.FullName,
+                    StudentCode = f.Student != null ? f.Student.StudentCode : student.StudentCode,
+                    AcademicTermId = f.AcademicTermId,
+                    AmountPaid = f.AmountPaid,
+                    PaymentDate = f.PaymentDate,
+                    PaymentMethod = f.PaymentMethod,
+                    BankTellerRef = f.BankTellerRef,
+                    BankName = f.BankName,
+                    AttachmentFile = f.AttachmentFile,
+                    AttachmentUrl = f.AttachmentFile,
+                    Status = f.Status,
+                    VerifiedByName = f.VerifiedBy != null && f.VerifiedBy.User != null ? f.VerifiedBy.User.DisplayName : null,
+                    VerifiedAt = (f.Status == FeeTransactionStatus.Verified || f.Status == FeeTransactionStatus.Cleared) ? f.UpdatedAt : null,
+                    Notes = f.Notes,
+                    CreatedAt = f.CreatedAt
+                })
+                .ToListAsync();
 
             decimal totalPaid = transactions
                 .Where(t => t.Status == FeeTransactionStatus.Verified || t.Status == FeeTransactionStatus.Cleared)
                 .Sum(t => t.AmountPaid);
 
-            decimal balance = Math.Max(0, totalBilled - totalPaid);
+            var pendingTellers = transactions
+                .Where(t => t.Status == FeeTransactionStatus.PendingReview || t.Status == FeeTransactionStatus.Unposted)
+                .ToList();
+
+            decimal pendingReviewAmount = pendingTellers.Sum(t => t.AmountPaid);
+            int pendingTellersCount = pendingTellers.Count;
+            decimal balance = Math.Max(0m, totalBilled - totalPaid);
+
+            string clearanceStatus;
+            if (totalBilled <= 0m)
+            {
+                clearanceStatus = "Unbilled";
+            }
+            else if (balance <= 0m && pendingTellersCount == 0)
+            {
+                clearanceStatus = "Cleared";
+            }
+            else if (pendingTellersCount > 0)
+            {
+                clearanceStatus = "PendingReview";
+            }
+            else if (totalPaid > 0m)
+            {
+                clearanceStatus = "Partial";
+            }
+            else
+            {
+                clearanceStatus = "Outstanding";
+            }
 
             return new StudentFeeSummaryResponse
             {
                 StudentId = student.Id,
                 StudentName = student.FullName,
+                StudentCode = student.StudentCode,
+                ClassSectionName = student.ClassSection?.Name ?? string.Empty,
+                AcademicTermId = activeTerm?.Id,
+                AcademicTermName = activeTerm != null ? $"Term {activeTerm.TermNumber} ({activeTerm.SessionName})" : string.Empty,
+                SessionName = activeTerm?.SessionName ?? string.Empty,
+                TermNumber = activeTerm != null ? (int?)activeTerm.TermNumber : null,
                 TotalBilled = totalBilled,
                 TotalPaid = totalPaid,
+                PendingReviewAmount = pendingReviewAmount,
+                PendingTellersCount = pendingTellersCount,
                 Balance = balance,
-                FeeItems = _mapper.Map<List<FeeItemResponse>>(feeSchedule.FeeItems.OrderBy(i => i.SortOrder).ToList()),
-                Transactions = _mapper.Map<List<FeeTransactionResponse>>(transactions)
+                ClearanceStatus = clearanceStatus,
+                FeeItems = feeItems,
+                Breakdown = feeItems,
+                Transactions = transactions
             };
         }
 
         public async Task<FeeTransactionResponse> PostTeller(PostTellerRequest request, ClaimsPrincipal currentUser)
         {
-            var student = await _unitOfWork.GetRepository<Student>().GetByIdAsync(request.StudentId);
-            if (student == null)
-            {
-                throw new KeyNotFoundException("Student not found");
-            }
+            var student = await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, request.StudentId);
 
             var activeTerm = await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => t.IsActive)
                 ?? await _unitOfWork.GetRepository<AcademicTerm>().GetSingleByAsync(t => true);
@@ -223,6 +280,10 @@ namespace SFMA_API.Services.Implementation
             {
                 throw new InvalidOperationException("No active academic term found for fee transaction.");
             }
+
+            string? attachmentValue = !string.IsNullOrWhiteSpace(request.AttachmentUrl)
+                ? request.AttachmentUrl.Trim()
+                : request.AttachmentFile?.Trim();
 
             var transaction = new FeeTransaction
             {
@@ -235,7 +296,7 @@ namespace SFMA_API.Services.Implementation
                 PaymentMethod = request.PaymentMethod,
                 BankTellerRef = request.BankTellerRef,
                 BankName = request.BankName,
-                AttachmentFile = request.AttachmentFile,
+                AttachmentFile = attachmentValue,
                 Status = FeeTransactionStatus.PendingReview,
                 Notes = request.Notes,
                 CreatedAt = DateTime.UtcNow
@@ -247,6 +308,7 @@ namespace SFMA_API.Services.Implementation
             var res = _mapper.Map<FeeTransactionResponse>(transaction);
             res.StudentName = student.FullName;
             res.StudentCode = student.StudentCode;
+            res.AttachmentUrl = attachmentValue;
             return res;
         }
 
@@ -355,29 +417,84 @@ namespace SFMA_API.Services.Implementation
             }
 
             var response = _mapper.Map<FeeTransactionResponse>(transaction);
-            // Use actual verifier name; fall back to "Unknown" rather than a misleading role name
             response.VerifiedByName = staff?.User?.DisplayName ?? "Unknown";
+            response.VerifiedAt = transaction.UpdatedAt;
+            response.AttachmentUrl = transaction.AttachmentFile;
             return response;
         }
 
         public async Task<IEnumerable<ReceiptResponse>> GetStudentReceipts(Guid studentId, ClaimsPrincipal currentUser)
         {
-            var receipts = await _unitOfWork.GetRepository<Receipt>().GetByAsync(
-                r => r.FeeTransaction.StudentId == studentId,
-                include: q => q.Include(r => r.FeeTransaction).ThenInclude(f => f.Student)
-                               .Include(r => r.VerifiedBy).ThenInclude(v => v.User));
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, studentId);
 
-            return _mapper.Map<IEnumerable<ReceiptResponse>>(receipts);
+            return await _unitOfWork.GetRepository<Receipt>().GetQueryable(r => r.FeeTransaction.StudentId == studentId)
+                .OrderByDescending(r => r.IssuedAt)
+                .Select(r => new ReceiptResponse
+                {
+                    Id = r.Id,
+                    ReceiptCode = r.ReceiptCode,
+                    FeeTransactionId = r.FeeTransactionId,
+                    StudentId = r.FeeTransaction.StudentId,
+                    StudentName = r.FeeTransaction.Student != null ? r.FeeTransaction.Student.FullName : string.Empty,
+                    StudentCode = r.FeeTransaction.Student != null ? r.FeeTransaction.Student.StudentCode : string.Empty,
+                    IssuedAt = r.IssuedAt,
+                    VerifiedByName = r.VerifiedBy != null && r.VerifiedBy.User != null ? r.VerifiedBy.User.DisplayName : string.Empty,
+                    VerifiedAt = r.IssuedAt,
+                    AmountPaid = r.FeeTransaction.AmountPaid,
+                    PaymentMethod = r.FeeTransaction.PaymentMethod,
+                    BankName = r.FeeTransaction.BankName,
+                    BankTellerRef = r.FeeTransaction.BankTellerRef,
+                    Status = r.FeeTransaction.Status,
+                    Notes = r.FeeTransaction.Notes,
+                    AttachmentUrl = r.FeeTransaction.AttachmentFile,
+                    AcademicTermName = r.FeeTransaction.AcademicTerm != null
+                        ? $"Term {r.FeeTransaction.AcademicTerm.TermNumber} ({r.FeeTransaction.AcademicTerm.SessionName})"
+                        : string.Empty,
+                    PdfAvailable = r.FeeTransaction.Status == FeeTransactionStatus.Verified || r.FeeTransaction.Status == FeeTransactionStatus.Cleared,
+                    PdfUrl = r.PdfUrl
+                })
+                .ToListAsync();
         }
 
         public async Task<ReceiptResponse?> GetReceiptPdf(Guid receiptId, ClaimsPrincipal currentUser)
         {
-            var receipt = await _unitOfWork.GetRepository<Receipt>().GetSingleByAsync(
-                r => r.Id == receiptId,
-                include: q => q.Include(r => r.FeeTransaction).ThenInclude(f => f.Student)
-                               .Include(r => r.VerifiedBy).ThenInclude(v => v.User));
+            var receipt = await _unitOfWork.GetRepository<Receipt>().GetQueryable(r => r.Id == receiptId)
+                .Select(r => new ReceiptResponse
+                {
+                    Id = r.Id,
+                    ReceiptCode = r.ReceiptCode,
+                    FeeTransactionId = r.FeeTransactionId,
+                    StudentId = r.FeeTransaction.StudentId,
+                    StudentName = r.FeeTransaction.Student != null ? r.FeeTransaction.Student.FullName : string.Empty,
+                    StudentCode = r.FeeTransaction.Student != null ? r.FeeTransaction.Student.StudentCode : string.Empty,
+                    IssuedAt = r.IssuedAt,
+                    VerifiedByName = r.VerifiedBy != null && r.VerifiedBy.User != null ? r.VerifiedBy.User.DisplayName : string.Empty,
+                    VerifiedAt = r.IssuedAt,
+                    AmountPaid = r.FeeTransaction.AmountPaid,
+                    PaymentMethod = r.FeeTransaction.PaymentMethod,
+                    BankName = r.FeeTransaction.BankName,
+                    BankTellerRef = r.FeeTransaction.BankTellerRef,
+                    Status = r.FeeTransaction.Status,
+                    Notes = r.FeeTransaction.Notes,
+                    AttachmentUrl = r.FeeTransaction.AttachmentFile,
+                    AcademicTermName = r.FeeTransaction.AcademicTerm != null
+                        ? $"Term {r.FeeTransaction.AcademicTerm.TermNumber} ({r.FeeTransaction.AcademicTerm.SessionName})"
+                        : string.Empty,
+                    PdfAvailable = r.FeeTransaction.Status == FeeTransactionStatus.Verified || r.FeeTransaction.Status == FeeTransactionStatus.Cleared,
+                    PdfUrl = r.PdfUrl
+                })
+                .FirstOrDefaultAsync();
 
-            return receipt != null ? _mapper.Map<ReceiptResponse>(receipt) : null;
+            if (receipt == null) return null;
+
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, receipt.StudentId);
+
+            if (!receipt.PdfAvailable)
+            {
+                throw new InvalidOperationException("Official receipt PDF is only available for verified or cleared fee transactions.");
+            }
+
+            return receipt;
         }
 
         public async Task<bool> QueuePaymentReminders(QueuePaymentRemindersRequest request)
@@ -801,4 +918,3 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
-
