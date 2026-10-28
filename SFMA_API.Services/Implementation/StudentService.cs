@@ -85,7 +85,11 @@ namespace SFMA_API.Services.Implementation
                         IssuedAt = s.IdCard.GeneratedAt,
                         ExpiresAt = s.IdCard.GeneratedAt.AddYears(1),
                         NfcProvisioned = s.IdCard.NfcProvisioned,
-                        Status = s.IdCard.Status
+                        Status = s.IdCard.Status,
+                        EmergencyContactName = s.StudentParents.Where(sp => sp.IsPrimary).Select(sp => sp.Parent.FullName).FirstOrDefault()
+                            ?? s.StudentParents.Select(sp => sp.Parent.FullName).FirstOrDefault(),
+                        EmergencyContactPhone = s.StudentParents.Where(sp => sp.IsPrimary).Select(sp => sp.Parent.Phone).FirstOrDefault()
+                            ?? s.StudentParents.Select(sp => sp.Parent.Phone).FirstOrDefault()
                     }
                     : null,
                 Parents = s.StudentParents.Select(sp => new StudentParentResponse
@@ -441,7 +445,15 @@ namespace SFMA_API.Services.Implementation
                     IssuedAt = c.GeneratedAt,
                     ExpiresAt = c.GeneratedAt.AddYears(1),
                     NfcProvisioned = c.NfcProvisioned,
-                    Status = c.Status
+                    Status = c.Status,
+                    EmergencyContactName = c.Student != null
+                        ? (c.Student.StudentParents.Where(sp => sp.IsPrimary).Select(sp => sp.Parent.FullName).FirstOrDefault()
+                            ?? c.Student.StudentParents.Select(sp => sp.Parent.FullName).FirstOrDefault())
+                        : null,
+                    EmergencyContactPhone = c.Student != null
+                        ? (c.Student.StudentParents.Where(sp => sp.IsPrimary).Select(sp => sp.Parent.Phone).FirstOrDefault()
+                            ?? c.Student.StudentParents.Select(sp => sp.Parent.Phone).FirstOrDefault())
+                        : null
                 })
                 .FirstOrDefaultAsync();
         }

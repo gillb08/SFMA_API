@@ -57,5 +57,7 @@ namespace SFMA_API.Models.Dtos.Response
         public DateTime ExpiresAt { get; set; }
         public bool NfcProvisioned { get; set; } = true;
         public IdCardStatus Status { get; set; }
+        public string? EmergencyContactName { get; set; }
+        public string? EmergencyContactPhone { get; set; }
     }
 }
