@@ -390,6 +390,9 @@ namespace SFMA_API.Data.Migrations
                     b.Property<decimal?>("Ca2Score")
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<string>("ClassTeacherRemark")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -400,8 +403,14 @@ namespace SFMA_API.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("HosRemark")
+                        .HasColumnType("text");
+
                     b.Property<decimal?>("ProjectScore")
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Remark")
                         .HasColumnType("text");
@@ -1596,6 +1605,58 @@ namespace SFMA_API.Data.Migrations
                     b.ToTable("StudentParents");
                 });
 
+            modelBuilder.Entity("SFMA_API.Models.Entities.Subject", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AcademicTermId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ClassSectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Department")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Division")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<short>("SortOrder")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcademicTermId");
+
+                    b.HasIndex("ClassSectionId");
+
+                    b.HasIndex("Name", "ClassSectionId")
+                        .IsUnique();
+
+                    b.ToTable("Subjects");
+                });
+
             modelBuilder.Entity("SFMA_API.Models.Entities.TimetableSlot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1642,6 +1703,58 @@ namespace SFMA_API.Data.Migrations
                     b.HasIndex("TeacherId");
 
                     b.ToTable("TimetableSlots");
+                });
+
+            modelBuilder.Entity("SFMA_API.Models.Entities.UploadedFileRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid?>("ClassSectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("StudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("UploadedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("UploadedFiles");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
@@ -2174,6 +2287,23 @@ namespace SFMA_API.Data.Migrations
                     b.Navigation("Parent");
 
                     b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("SFMA_API.Models.Entities.Subject", b =>
+                {
+                    b.HasOne("SFMA_API.Models.Entities.AcademicTerm", "AcademicTerm")
+                        .WithMany()
+                        .HasForeignKey("AcademicTermId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SFMA_API.Models.Entities.ClassSection", "ClassSection")
+                        .WithMany()
+                        .HasForeignKey("ClassSectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("AcademicTerm");
+
+                    b.Navigation("ClassSection");
                 });
 
             modelBuilder.Entity("SFMA_API.Models.Entities.TimetableSlot", b =>
