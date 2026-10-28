@@ -104,32 +104,40 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<StudentResponse?> GetStudentById(Guid id, ClaimsPrincipal currentUser)
         {
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, id);
+
             var student = await _unitOfWork.GetRepository<Student>().GetSingleByAsync(
                 s => s.Id == id,
                 include: q => q.Include(s => s.ClassSection).ThenInclude(c => c.HomeroomTeacher).ThenInclude(t => t!.User)
+                               .Include(s => s.ClassSection).ThenInclude(c => c.AcademicTerm)
+                               .Include(s => s.IdCard)
                                .Include(s => s.StudentParents).ThenInclude(sp => sp.Parent));
 
             if (student == null) return null;
 
-            string? userId = currentUser.FindFirst("Id")?.Value ?? currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var roles = currentUser.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
-
-            if (roles.Contains("student") && student.UserId != userId && !roles.Contains("super_admin") && !roles.Contains("academic_admin"))
+            var dto = _mapper.Map<StudentResponse>(student);
+            dto.AcademicSessionName = student.ClassSection?.AcademicTerm?.SessionName;
+            if (student.IdCard != null)
             {
-                throw new UnauthorizedAccessException("You can only view your own student profile");
-            }
-
-            if (roles.Contains("parent") && !roles.Contains("super_admin") && !roles.Contains("academic_admin"))
-            {
-                var parent = await _unitOfWork.GetRepository<Parent>().GetSingleByAsync(p => p.UserId == userId);
-                bool isChild = parent != null && student.StudentParents.Any(sp => sp.ParentId == parent.Id);
-                if (!isChild)
+                dto.IdCard = new IdCardResponse
                 {
-                    throw new UnauthorizedAccessException("You can only view your own child's profile");
-                }
+                    Id = student.IdCard.Id,
+                    StudentId = student.Id,
+                    StudentName = student.FullName,
+                    StudentCode = student.StudentCode,
+                    ClassSectionName = student.ClassSection?.Name ?? string.Empty,
+                    ClassTeacherName = student.ClassSection?.HomeroomTeacher?.User?.DisplayName,
+                    AcademicSessionName = student.ClassSection?.AcademicTerm?.SessionName,
+                    PhotoUrl = student.PhotoUrl,
+                    CardSerial = student.IdCard.CardSerial,
+                    GeneratedAt = student.IdCard.GeneratedAt,
+                    IssuedAt = student.IdCard.GeneratedAt,
+                    ExpiresAt = student.IdCard.GeneratedAt.AddYears(1),
+                    NfcProvisioned = student.IdCard.NfcProvisioned,
+                    Status = student.IdCard.Status
+                };
             }
-
-            return _mapper.Map<StudentResponse>(student);
+            return dto;
         }
 
         public async Task<AdmitStudentResponse> AdmitStudent(AdmitStudentRequest request)
@@ -274,6 +282,9 @@ namespace SFMA_API.Services.Implementation
             var cardResponse = _mapper.Map<IdCardResponse>(idCard);
             cardResponse.StudentName = student.FullName;
             cardResponse.StudentCode = student.StudentCode;
+            cardResponse.ClassSectionName = classSection.Name;
+            cardResponse.IssuedAt = idCard.GeneratedAt;
+            cardResponse.ExpiresAt = idCard.GeneratedAt.AddYears(1);
 
             string className = classSection.Name;
 
@@ -376,11 +387,31 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<IdCardResponse?> GetIdCard(Guid studentId, ClaimsPrincipal currentUser)
         {
-            var idCard = await _unitOfWork.GetRepository<IdCard>().GetSingleByAsync(
-                c => c.StudentId == studentId,
-                include: q => q.Include(c => c.Student));
+            await ClassSectionHelper.ValidateStudentOwnershipAsync(_unitOfWork, currentUser, studentId);
 
-            return idCard != null ? _mapper.Map<IdCardResponse>(idCard) : null;
+            return await _unitOfWork.GetRepository<IdCard>().GetQueryable(c => c.StudentId == studentId)
+                .Select(c => new IdCardResponse
+                {
+                    Id = c.Id,
+                    StudentId = c.StudentId,
+                    StudentName = c.Student != null ? c.Student.FullName : string.Empty,
+                    StudentCode = c.Student != null ? c.Student.StudentCode : string.Empty,
+                    ClassSectionName = c.Student != null && c.Student.ClassSection != null ? c.Student.ClassSection.Name : string.Empty,
+                    ClassTeacherName = c.Student != null && c.Student.ClassSection != null && c.Student.ClassSection.HomeroomTeacher != null && c.Student.ClassSection.HomeroomTeacher.User != null
+                        ? c.Student.ClassSection.HomeroomTeacher.User.DisplayName
+                        : null,
+                    AcademicSessionName = c.Student != null && c.Student.ClassSection != null && c.Student.ClassSection.AcademicTerm != null
+                        ? c.Student.ClassSection.AcademicTerm.SessionName
+                        : null,
+                    PhotoUrl = c.Student != null ? c.Student.PhotoUrl : null,
+                    CardSerial = c.CardSerial,
+                    GeneratedAt = c.GeneratedAt,
+                    IssuedAt = c.GeneratedAt,
+                    ExpiresAt = c.GeneratedAt.AddYears(1),
+                    NfcProvisioned = c.NfcProvisioned,
+                    Status = c.Status
+                })
+                .FirstOrDefaultAsync();
         }
 
         public async Task<byte[]> BatchPrint(BatchPrintRequest request)
@@ -432,4 +463,3 @@ namespace SFMA_API.Services.Implementation
         }
     }
 }
-

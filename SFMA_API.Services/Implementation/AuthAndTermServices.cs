@@ -11,6 +11,7 @@ using SFMA_API.Models.Enums;
 using SFMA_API.Services.Infrastructure;
 using SFMA_API.Services.Interfaces;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -78,24 +79,9 @@ namespace SFMA_API.Services.Implementation
             var token = await _jwtAuthenticator.GenerateJwtToken(user);
             var refreshToken = await _jwtAuthenticator.GenerateRefreshToken(user);
 
-            // Portal route resolved from configuration — no hardcoded paths in code
-            string portalRedirect = _schoolSettings.GetPortalRoute(primaryRole);
-            var (assignedClassId, assignedClassName) = await ResolveUserClassAssignmentAsync(user.Id);
-
-            var userProfile = new UserProfileResponse
-            {
-                Id = user.Id,
-                Email = user.Email ?? string.Empty,
-                DisplayName = user.DisplayName,
-                Role = primaryRole,
-                AvatarUrl = user.AvatarUrl,
-                PhoneNumber = user.PhoneNumber,
-                PortalRedirect = portalRedirect,
-                AssignedClassId = assignedClassId,
-                AssignedClassName = assignedClassName
-            };
-
+            var userProfile = await BuildUserProfileResponseAsync(user, primaryRole);
             var (menuItems, permissions) = await GetUserNavigationAndPermissions(user.Id, roles);
+            var activeTerm = await GetActiveTermSummaryAsync();
 
             return new LoggedInUserResponse
             {
@@ -103,31 +89,120 @@ namespace SFMA_API.Services.Implementation
                 RefreshToken = refreshToken,
                 User = userProfile,
                 MenuItems = menuItems,
-                Permissions = permissions
+                Permissions = permissions,
+                ActiveTerm = activeTerm
             };
         }
 
-        private async Task<(Guid? ClassId, string? ClassName)> ResolveUserClassAssignmentAsync(string userId)
+        private async Task<AcademicTermResponse?> GetActiveTermSummaryAsync()
         {
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == userId);
+            return await _unitOfWork.GetRepository<AcademicTerm>().GetQueryable(t => t.IsActive && t.Active)
+                .Select(t => new AcademicTermResponse
+                {
+                    Id = t.Id,
+                    SessionName = t.SessionName,
+                    TermNumber = t.TermNumber,
+                    StartDate = t.StartDate,
+                    EndDate = t.EndDate,
+                    IsActive = t.IsActive,
+                    Cat1Deadline = t.Cat1Deadline,
+                    Cat2Deadline = t.Cat2Deadline,
+                    ExamDeadline = t.ExamDeadline
+                })
+                .FirstOrDefaultAsync();
+        }
+
+        private async Task<UserProfileResponse> BuildUserProfileResponseAsync(ApplicationUser user, string primaryRole)
+        {
+            string? address = null;
+            string? phone = user.PhoneNumber;
+            Guid? staffId = null;
+            Guid? assignedClassId = null;
+            string? assignedClassName = null;
+            Guid? studentId = null;
+            string? studentCode = null;
+            Guid? classSectionId = null;
+            string? classSectionName = null;
+            var linkedWards = new List<LinkedWardSummaryResponse>();
+
+            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.UserId == user.Id);
             if (staff != null)
             {
+                staffId = staff.Id;
+                if (string.IsNullOrWhiteSpace(phone)) phone = staff.Phone;
                 var assignedClass = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
                 if (assignedClass != null)
                 {
-                    return (assignedClass.Id, assignedClass.Name);
+                    assignedClassId = assignedClass.Id;
+                    assignedClassName = assignedClass.Name;
+                    classSectionId = assignedClass.Id;
+                    classSectionName = assignedClass.Name;
                 }
             }
 
-            var student = await _unitOfWork.GetRepository<Student>().GetSingleByAsync(
-                s => s.UserId == userId,
-                include: q => q.Include(st => st.ClassSection));
+            var student = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.UserId == user.Id)
+                .Select(s => new
+                {
+                    s.Id,
+                    s.StudentCode,
+                    s.ClassSectionId,
+                    ClassSectionName = s.ClassSection != null ? s.ClassSection.Name : string.Empty
+                })
+                .FirstOrDefaultAsync();
+
             if (student != null)
             {
-                return (student.ClassSectionId, student.ClassSection?.Name);
+                studentId = student.Id;
+                studentCode = student.StudentCode;
+                classSectionId = student.ClassSectionId;
+                classSectionName = student.ClassSectionName;
+                assignedClassId ??= student.ClassSectionId;
+                assignedClassName ??= student.ClassSectionName;
             }
 
-            return (null, null);
+            var parent = await _unitOfWork.GetRepository<Parent>().GetSingleByAsync(p => p.UserId == user.Id);
+            if (parent != null)
+            {
+                address = parent.Address;
+                if (string.IsNullOrWhiteSpace(phone)) phone = parent.Phone;
+
+                linkedWards = await _unitOfWork.GetRepository<StudentParent>().GetQueryable(sp => sp.ParentId == parent.Id)
+                    .Select(sp => new LinkedWardSummaryResponse
+                    {
+                        Id = sp.Student.Id,
+                        StudentCode = sp.Student.StudentCode,
+                        FullName = sp.Student.FullName,
+                        Gender = sp.Student.Gender.ToString(),
+                        DateOfBirth = sp.Student.DateOfBirth,
+                        ClassSectionId = sp.Student.ClassSectionId,
+                        ClassSectionName = sp.Student.ClassSection != null ? sp.Student.ClassSection.Name : string.Empty,
+                        PhotoUrl = sp.Student.PhotoUrl,
+                        Status = sp.Student.Status,
+                        Relationship = sp.Relationship,
+                        IsPrimary = sp.IsPrimary
+                    })
+                    .ToListAsync();
+            }
+
+            return new UserProfileResponse
+            {
+                Id = user.Id,
+                Email = user.Email ?? string.Empty,
+                DisplayName = user.DisplayName,
+                Role = primaryRole,
+                AvatarUrl = user.AvatarUrl,
+                PhoneNumber = phone,
+                Address = address,
+                PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole),
+                AssignedClassId = assignedClassId,
+                AssignedClassName = assignedClassName,
+                StaffId = staffId,
+                StudentId = studentId,
+                StudentCode = studentCode,
+                ClassSectionId = classSectionId,
+                ClassSectionName = classSectionName,
+                LinkedWards = linkedWards
+            };
         }
 
         private async Task<(List<string> MenuItems, List<string> Permissions)> GetUserNavigationAndPermissions(string userId, IList<string> roles)
@@ -157,6 +232,10 @@ namespace SFMA_API.Services.Implementation
             permissionsSet.Add("update-user-profile");
             permissionsSet.Add("get-active-term");
             permissionsSet.Add("get-all-terms");
+            permissionsSet.Add("get-all-subjects");
+            permissionsSet.Add("get-school-config");
+            permissionsSet.Add("upload-file");
+            permissionsSet.Add("download-file");
 
             foreach (var ur in userRoles)
             {
@@ -207,30 +286,7 @@ namespace SFMA_API.Services.Implementation
             string primaryRole = roles.FirstOrDefault()
                 ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
-            string? address = null;
-            string? phone = user.PhoneNumber;
-            var parent = await _unitOfWork.GetRepository<Parent>().GetSingleByAsync(p => p.UserId == userId);
-            if (parent != null)
-            {
-                address = parent.Address;
-                phone = string.IsNullOrWhiteSpace(phone) ? parent.Phone : phone;
-            }
-
-            var (assignedClassId, assignedClassName) = await ResolveUserClassAssignmentAsync(userId);
-
-            return new UserProfileResponse
-            {
-                Id = user.Id,
-                Email = user.Email ?? string.Empty,
-                DisplayName = user.DisplayName,
-                Role = primaryRole,
-                AvatarUrl = user.AvatarUrl,
-                PhoneNumber = phone,
-                Address = address,
-                PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole),
-                AssignedClassId = assignedClassId,
-                AssignedClassName = assignedClassName
-            };
+            return await BuildUserProfileResponseAsync(user, primaryRole);
         }
 
         public async Task<UserProfileResponse> UpdateUserProfile(string userId, UpdateUserProfileRequest request)
@@ -360,27 +416,18 @@ namespace SFMA_API.Services.Implementation
             string primaryRole = roles.FirstOrDefault()
                 ?? throw new InvalidOperationException("User account has no assigned role. Contact your administrator.");
 
+            var userProfile = await BuildUserProfileResponseAsync(user, primaryRole);
             var (menuItems, permissions) = await GetUserNavigationAndPermissions(user.Id, roles);
-            var (assignedClassId, assignedClassName) = await ResolveUserClassAssignmentAsync(user.Id);
+            var activeTerm = await GetActiveTermSummaryAsync();
 
             return new LoggedInUserResponse
             {
                 Token = newToken.Token,
                 RefreshToken = newRefreshToken,
-                User = new UserProfileResponse
-                {
-                    Id = user.Id,
-                    Email = user.Email ?? string.Empty,
-                    DisplayName = user.DisplayName,
-                    Role = primaryRole,
-                    AvatarUrl = user.AvatarUrl,
-                    PhoneNumber = user.PhoneNumber,
-                    PortalRedirect = _schoolSettings.GetPortalRoute(primaryRole),
-                    AssignedClassId = assignedClassId,
-                    AssignedClassName = assignedClassName
-                },
+                User = userProfile,
                 MenuItems = menuItems,
-                Permissions = permissions
+                Permissions = permissions,
+                ActiveTerm = activeTerm
             };
         }
     }

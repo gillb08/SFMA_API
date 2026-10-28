@@ -26,7 +26,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetSchoolRequirements([FromQuery] Guid classSectionId, [FromQuery] Guid? termId, [FromQuery] Guid? studentId)
         {
-            var result = await _service.GetSchoolRequirements(classSectionId, termId, studentId);
+            var result = await _service.GetSchoolRequirements(classSectionId, termId, studentId, HttpContext.User);
             return Ok(result);
         }
 
@@ -67,4 +67,3 @@ namespace SFMA_API.Api.Controllers
         }
     }
 }
-

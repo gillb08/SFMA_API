@@ -22,6 +22,7 @@ namespace SFMA_API.Services.Extensions
             services.AddTransient<IAuthenticationService, AuthenticationService>();
             services.AddTransient<ITermService, TermService>();
             services.AddTransient<IClassSectionService, ClassSectionService>();
+            services.AddTransient<ISubjectService, SubjectService>();
 
             services.AddTransient<IStaffService, StaffService>();
             services.AddTransient<IRolePermissionService, RoleClaimService>();

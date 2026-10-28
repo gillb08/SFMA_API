@@ -5,12 +5,10 @@ namespace SFMA_API.Models.Dtos.Request
 {
     public class CreateClassSectionRequest
     {
-        [Required(ErrorMessage = "Class Name is required.")]
-        [StringLength(100, ErrorMessage = "Class Name cannot exceed 100 characters.")]
+        [Required]
         public string Name { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Division is required.")]
-        [StringLength(100, ErrorMessage = "Division cannot exceed 100 characters.")]
+        [Required]
         public string Division { get; set; } = string.Empty;
 
         public Guid? HomeroomTeacherId { get; set; }
@@ -20,16 +18,58 @@ namespace SFMA_API.Models.Dtos.Request
 
     public class UpdateClassSectionRequest
     {
-        [Required(ErrorMessage = "Class Name is required.")]
-        [StringLength(100, ErrorMessage = "Class Name cannot exceed 100 characters.")]
+        [Required]
         public string Name { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Division is required.")]
-        [StringLength(100, ErrorMessage = "Division cannot exceed 100 characters.")]
+        [Required]
         public string Division { get; set; } = string.Empty;
 
         public Guid? HomeroomTeacherId { get; set; }
 
         public Guid? AcademicTermId { get; set; }
+    }
+
+    public class CreateSubjectRequest
+    {
+        [Required]
+        public string Name { get; set; } = string.Empty;
+
+        public string? Code { get; set; }
+
+        public string? Category { get; set; }
+
+        public string? Division { get; set; }
+
+        public string? Department { get; set; }
+
+        public Guid? ClassSectionId { get; set; }
+
+        public Guid? AcademicTermId { get; set; }
+
+        public short? SortOrder { get; set; }
+
+        public bool? Active { get; set; }
+    }
+
+    public class UpdateSubjectRequest
+    {
+        [Required]
+        public string Name { get; set; } = string.Empty;
+
+        public string? Code { get; set; }
+
+        public string? Category { get; set; }
+
+        public string? Division { get; set; }
+
+        public string? Department { get; set; }
+
+        public Guid? ClassSectionId { get; set; }
+
+        public Guid? AcademicTermId { get; set; }
+
+        public short? SortOrder { get; set; }
+
+        public bool? Active { get; set; }
     }
 }

@@ -66,4 +66,8 @@ namespace SFMA_API.Models.Dtos.Request
         public DateTime? Cat2Deadline { get; set; }
         public DateTime? ExamDeadline { get; set; }
     }
+
+    public class UpdateTermDeadlinesRequest : ConfigureDeadlinesRequest
+    {
+    }
 }
