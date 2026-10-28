@@ -300,23 +300,38 @@ namespace SFMA_API.Services.Implementation
                 return (null, null);
             }
 
-            var existingSection = await classRepo.GetByIdAsync(classSectionId.Value);
             var targetSection = await ClassSectionHelper.EnsureClassSectionAsync(_unitOfWork, classSectionId.Value, className);
             targetSection.HomeroomTeacherId = staffId;
             targetSection.UpdatedAt = DateTime.UtcNow;
-
-            if (existingSection != null)
-            {
-                await classRepo.UpdateAsync(targetSection);
-            }
+            await classRepo.UpdateAsync(targetSection);
 
             return (targetSection.Id, targetSection.Name);
+        }
+
+        private static IQueryable<StaffResponse> ProjectStaff(IQueryable<Staff> query)
+        {
+            return query.Select(s => new StaffResponse
+            {
+                Id = s.Id,
+                UserId = s.UserId,
+                StaffCode = s.StaffCode,
+                Department = s.Department,
+                Title = s.Title,
+                Phone = s.Phone,
+                JoinedDate = s.JoinedDate,
+                FullName = s.User != null ? s.User.DisplayName : string.Empty,
+                Email = s.User != null && s.User.Email != null ? s.User.Email : string.Empty,
+                Role = s.User != null
+                    ? (s.User.UserRoles.Select(ur => ur.Role.Key).FirstOrDefault() ?? string.Empty)
+                    : string.Empty,
+                Status = s.User != null ? s.User.Status.ToString() : "Active"
+            });
         }
 
         public async Task<PagedResponse<StaffResponse>> GetAllStaff(string? department, string? roleKey, string? status, RequestParameters parameters)
         {
             var staffRepo = _unitOfWork.GetRepository<Staff>();
-            var query = staffRepo.GetQueryable(include: q => q.Include(s => s.User).ThenInclude(u => u.UserRoles).ThenInclude(ur => ur.Role));
+            var query = staffRepo.GetQueryable();
 
             if (!string.IsNullOrWhiteSpace(department))
                 query = query.Where(s => s.Department == department);
@@ -338,10 +353,11 @@ namespace SFMA_API.Services.Implementation
 
             var count = await query.CountAsync();
             var skip = (parameters.PageNumber - 1) * parameters.PageSize;
-            var items = await query.OrderBy(s => s.StaffCode).Skip(skip).Take(parameters.PageSize).ToListAsync();
+            var mappedItems = await ProjectStaff(query.OrderBy(s => s.StaffCode).Skip(skip).Take(parameters.PageSize)).ToListAsync();
 
-            var mappedItems = _mapper.Map<List<StaffResponse>>(items);
-            var assignedClasses = await _unitOfWork.GetRepository<ClassSection>().GetByAsync(c => c.HomeroomTeacherId != null);
+            var assignedClasses = await _unitOfWork.GetRepository<ClassSection>().GetQueryable(c => c.HomeroomTeacherId != null)
+                .Select(c => new { c.Id, c.Name, c.HomeroomTeacherId })
+                .ToListAsync();
 
             foreach (var dto in mappedItems)
             {
@@ -368,14 +384,14 @@ namespace SFMA_API.Services.Implementation
 
         public async Task<StaffResponse?> GetStaffById(Guid id)
         {
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(
-                s => s.Id == id,
-                include: q => q.Include(s => s.User).ThenInclude(u => u.UserRoles).ThenInclude(ur => ur.Role));
+            var dto = await ProjectStaff(_unitOfWork.GetRepository<Staff>().GetQueryable(s => s.Id == id))
+                .FirstOrDefaultAsync();
 
-            if (staff == null) return null;
+            if (dto == null) return null;
 
-            var dto = _mapper.Map<StaffResponse>(staff);
-            var assigned = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
+            var assigned = await _unitOfWork.GetRepository<ClassSection>().GetQueryable(c => c.HomeroomTeacherId == id)
+                .Select(c => new { c.Id, c.Name })
+                .FirstOrDefaultAsync();
             if (assigned != null)
             {
                 dto.AssignedClassId = assigned.Id;
@@ -432,8 +448,7 @@ namespace SFMA_API.Services.Implementation
                 Department = request.Department,
                 Title = request.Title,
                 Phone = request.Phone,
-                JoinedDate = DateTime.UtcNow.Date,
-                User = user
+                JoinedDate = DateTime.UtcNow.Date
             };
 
             await _unitOfWork.GetRepository<Staff>().AddAsync(staff);
@@ -446,15 +461,35 @@ namespace SFMA_API.Services.Implementation
 
             await _unitOfWork.SaveChangesAsync();
 
-            var staffResponse = _mapper.Map<StaffResponse>(staff);
-            staffResponse.Role = request.RoleKey;
-            staffResponse.AssignedClassId = assignedClassId;
-            staffResponse.AssignedClassName = assignedClassName;
+            var staffResponse = (await GetStaffById(staff.Id)) ?? new StaffResponse
+            {
+                Id = staff.Id,
+                UserId = user.Id,
+                StaffCode = staffCode,
+                Department = staff.Department,
+                Title = staff.Title,
+                Phone = staff.Phone,
+                JoinedDate = staff.JoinedDate,
+                FullName = user.DisplayName,
+                Email = user.Email ?? string.Empty,
+                Role = request.RoleKey,
+                Status = user.Status.ToString(),
+                AssignedClassId = assignedClassId,
+                AssignedClassName = assignedClassName
+            };
 
-            var userResponse = _mapper.Map<UserProfileResponse>(user);
-            userResponse.Role = request.RoleKey;
-            userResponse.AssignedClassId = assignedClassId;
-            userResponse.AssignedClassName = assignedClassName;
+            var userResponse = new UserProfileResponse
+            {
+                Id = user.Id,
+                DisplayName = user.DisplayName,
+                Email = user.Email ?? string.Empty,
+                PhoneNumber = user.PhoneNumber,
+                AvatarUrl = user.AvatarUrl,
+                Role = request.RoleKey,
+                StaffId = staff.Id,
+                AssignedClassId = assignedClassId,
+                AssignedClassName = assignedClassName
+            };
 
             // Background notification dispatch to staff email and phone
             _ = Task.Run(() => _notificationService.SendStaffCredentialsAsync(
@@ -478,10 +513,16 @@ namespace SFMA_API.Services.Implementation
         public async Task<StaffResponse> UpdateStaff(Guid id, UpdateStaffRequest request)
         {
             var staffRepo = _unitOfWork.GetRepository<Staff>();
-            var staff = await staffRepo.GetSingleByAsync(s => s.Id == id, include: q => q.Include(s => s.User).ThenInclude(u => u.UserRoles).ThenInclude(ur => ur.Role));
+            var staff = await staffRepo.GetByIdAsync(id);
             if (staff == null)
             {
                 throw new KeyNotFoundException("Staff record not found");
+            }
+
+            var user = await _userManager.FindByIdAsync(staff.UserId);
+            if (user == null)
+            {
+                throw new KeyNotFoundException("Associated staff user account not found");
             }
 
             staff.Department = request.Department;
@@ -489,18 +530,21 @@ namespace SFMA_API.Services.Implementation
             if (!string.IsNullOrWhiteSpace(request.Phone))
             {
                 staff.Phone = request.Phone;
-                staff.User.PhoneNumber = request.Phone;
+                user.PhoneNumber = request.Phone;
             }
 
             if (!string.IsNullOrWhiteSpace(request.RoleKey))
             {
-                var currentRoles = await _userManager.GetRolesAsync(staff.User);
-                await _userManager.RemoveFromRolesAsync(staff.User, currentRoles);
+                var currentRoles = await _userManager.GetRolesAsync(user);
+                if (currentRoles.Any())
+                {
+                    await _userManager.RemoveFromRolesAsync(user, currentRoles);
+                }
                 if (!await _roleManager.RoleExistsAsync(request.RoleKey))
                 {
                     await _roleManager.CreateAsync(new ApplicationRole(request.RoleKey));
                 }
-                await _userManager.AddToRoleAsync(staff.User, request.RoleKey);
+                await _userManager.AddToRoleAsync(user, request.RoleKey);
             }
 
             if (request.AssignedClassId.HasValue)
@@ -512,59 +556,68 @@ namespace SFMA_API.Services.Implementation
                 await AssignClassToStaffAsync(staff.Id, null, null);
             }
 
+            staff.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt = DateTime.UtcNow;
+
             await staffRepo.UpdateAsync(staff);
-            await _userManager.UpdateAsync(staff.User);
+            await _userManager.UpdateAsync(user);
             await _unitOfWork.SaveChangesAsync();
 
-            var dto = _mapper.Map<StaffResponse>(staff);
+            var dto = (await GetStaffById(staff.Id))!;
             if (!string.IsNullOrWhiteSpace(request.RoleKey))
             {
                 dto.Role = request.RoleKey;
-            }
-            var assigned = await _unitOfWork.GetRepository<ClassSection>().GetSingleByAsync(c => c.HomeroomTeacherId == staff.Id);
-            if (assigned != null)
-            {
-                dto.AssignedClassId = assigned.Id;
-                dto.AssignedClassName = assigned.Name;
             }
             return dto;
         }
 
         public async Task<StaffResponse> UpdateStaffStatus(Guid id, UpdateStaffStatusRequest request)
         {
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.Id == id, include: q => q.Include(s => s.User).ThenInclude(u => u.UserRoles).ThenInclude(ur => ur.Role));
+            var staff = await _unitOfWork.GetRepository<Staff>().GetByIdAsync(id);
             if (staff == null)
             {
                 throw new KeyNotFoundException("Staff record not found");
+            }
+
+            var user = await _userManager.FindByIdAsync(staff.UserId);
+            if (user == null)
+            {
+                throw new KeyNotFoundException("Associated staff user account not found");
             }
 
             if (request.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
             {
-                staff.User.Status = UserStatus.Suspended;
-                await _userManager.RemoveAuthenticationTokenAsync(staff.User, "SFMA", "RefreshToken");
+                user.Status = UserStatus.Suspended;
+                await _userManager.RemoveAuthenticationTokenAsync(user, "SFMA", "RefreshToken");
             }
             else
             {
-                staff.User.Status = UserStatus.Active;
+                user.Status = UserStatus.Active;
             }
 
-            staff.User.UpdatedAt = DateTime.UtcNow;
-            await _userManager.UpdateAsync(staff.User);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _userManager.UpdateAsync(user);
 
-            return _mapper.Map<StaffResponse>(staff);
+            return (await GetStaffById(staff.Id))!;
         }
 
         public async Task<string> AdminResetPassword(Guid id)
         {
-            var staff = await _unitOfWork.GetRepository<Staff>().GetSingleByAsync(s => s.Id == id, include: q => q.Include(s => s.User));
+            var staff = await _unitOfWork.GetRepository<Staff>().GetByIdAsync(id);
             if (staff == null)
             {
                 throw new KeyNotFoundException("Staff record not found");
             }
 
+            var user = await _userManager.FindByIdAsync(staff.UserId);
+            if (user == null)
+            {
+                throw new KeyNotFoundException("Associated staff user account not found");
+            }
+
             string newPassword = $"Staff@{Guid.NewGuid().ToString("N")[..6]}!";
-            var token = await _userManager.GeneratePasswordResetTokenAsync(staff.User);
-            var res = await _userManager.ResetPasswordAsync(staff.User, token, newPassword);
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var res = await _userManager.ResetPasswordAsync(user, token, newPassword);
             if (!res.Succeeded)
             {
                 throw new InvalidOperationException(string.Join("\n", res.Errors.Select(e => e.Description)));
@@ -572,8 +625,8 @@ namespace SFMA_API.Services.Implementation
 
             // Dispatch notification to staff
             _ = Task.Run(() => _notificationService.SendStaffPasswordResetAsync(
-                staff.User.DisplayName,
-                staff.User.Email ?? string.Empty,
+                user.DisplayName,
+                user.Email ?? string.Empty,
                 staff.Phone,
                 newPassword));
 
