@@ -384,7 +384,7 @@ namespace SFMA_API.Services.Implementation
         {
             await ClassSectionHelper.ValidateTeacherClassAccessAsync(_unitOfWork, currentUser, classId);
 
-            return await _unitOfWork.GetRepository<AssessmentScore>().GetQueryable(
+            var existingScores = await _unitOfWork.GetRepository<AssessmentScore>().GetQueryable(
                 a => a.Student.ClassSectionId == classId && a.Subject.ToLower() == subject.ToLower() && a.AcademicTermId == termId)
                 .Select(a => new AssessmentScoreResponse
                 {
@@ -415,6 +415,58 @@ namespace SFMA_API.Services.Implementation
                     HosRemark = a.HosRemark
                 })
                 .ToListAsync();
+
+            var recordedStudentIds = existingScores.Select(s => s.StudentId).ToHashSet();
+
+            var enrolledStudents = await _unitOfWork.GetRepository<Student>().GetQueryable(s => s.ClassSectionId == classId && s.Status != StudentStatus.Withdrawn && s.Status != StudentStatus.Graduated)
+                .OrderBy(s => s.StudentCode)
+                .Select(s => new
+                {
+                    s.Id,
+                    s.FullName,
+                    s.StudentCode,
+                    ClassTeacherName = s.ClassSection != null && s.ClassSection.HomeroomTeacher != null && s.ClassSection.HomeroomTeacher.User != null
+                        ? s.ClassSection.HomeroomTeacher.User.DisplayName
+                        : null,
+                    AcademicSessionName = s.ClassSection != null && s.ClassSection.AcademicTerm != null
+                        ? s.ClassSection.AcademicTerm.SessionName
+                        : string.Empty,
+                    TermNumber = s.ClassSection != null && s.ClassSection.AcademicTerm != null
+                        ? (int?)s.ClassSection.AcademicTerm.TermNumber
+                        : null
+                })
+                .ToListAsync();
+
+            var result = new List<AssessmentScoreResponse>(existingScores);
+
+            foreach (var student in enrolledStudents)
+            {
+                if (!recordedStudentIds.Contains(student.Id))
+                {
+                    result.Add(new AssessmentScoreResponse
+                    {
+                        Id = Guid.Empty,
+                        StudentId = student.Id,
+                        StudentName = student.FullName,
+                        StudentCode = student.StudentCode,
+                        Subject = subject,
+                        Ca1Score = 0,
+                        Ca2Score = 0,
+                        ProjectScore = 0,
+                        ExamScore = 0,
+                        TotalScore = 0,
+                        Grade = "-",
+                        Remark = "Ungraded",
+                        Status = AssessmentStatus.Draft,
+                        AcademicTermId = termId,
+                        SessionName = student.AcademicSessionName,
+                        TermNumber = student.TermNumber,
+                        ClassTeacherName = student.ClassTeacherName
+                    });
+                }
+            }
+
+            return result.OrderBy(s => s.StudentCode).ThenBy(s => s.StudentName);
         }
 
         public async Task<BatchUpdateAssessmentsResponse> BatchUpdateScores(BatchUpdateAssessmentsRequest request, ClaimsPrincipal currentUser)
@@ -758,9 +810,7 @@ namespace SFMA_API.Services.Implementation
         public Task<string> GetScoreTemplateCsv()
         {
             // Template headers reflect the 20-20-60 assessment model: CA1 (20), CA2 (20), Exam (60)
-            return Task.FromResult(
-                "StudentCode,StudentName,CA1,CA2,Exam,Remark\n" +
-                "STUDENT-CODE-HERE,Student Full Name,0,0,0,");
+            return Task.FromResult("StudentCode,StudentName,CA1,CA2,Exam,Remark\n");
         }
     }
 }
