@@ -48,6 +48,8 @@ namespace SFMA_API.Data.Context
         public virtual DbSet<Menu> Menus { get; set; } = null!;
         public virtual DbSet<DepartmentBudget> DepartmentBudgets { get; set; } = null!;
         public virtual DbSet<Subject> Subjects { get; set; } = null!;
+        public virtual DbSet<CurriculumTopic> CurriculumTopics { get; set; } = null!;
+        public virtual DbSet<AcademicWorkflowAuditLog> AcademicWorkflowAuditLogs { get; set; } = null!;
         public virtual DbSet<UploadedFileRecord> UploadedFiles { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -273,6 +275,22 @@ namespace SFMA_API.Data.Context
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
+            modelBuilder.Entity<CurriculumTopic>(entity =>
+            {
+                entity.HasOne(c => c.Subject)
+                    .WithMany(s => s.CurriculumTopics)
+                    .HasForeignKey(c => c.SubjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(c => c.ClassSection)
+                    .WithMany(cs => cs.CurriculumTopics)
+                    .HasForeignKey(c => c.ClassSectionId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(c => c.AcademicTerm)
+                    .WithMany(t => t.CurriculumTopics)
+                    .HasForeignKey(c => c.AcademicTermId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<SchemeOfWorkEntry>(entity =>
             {
                 entity.HasOne(s => s.ClassSection)
@@ -283,6 +301,22 @@ namespace SFMA_API.Data.Context
                     .WithMany(t => t.SchemeOfWorkEntries)
                     .HasForeignKey(s => s.AcademicTermId)
                     .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(s => s.Subject)
+                    .WithMany(subj => subj.SchemeOfWorkEntries)
+                    .HasForeignKey(s => s.SubjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(s => s.CurriculumTopic)
+                    .WithMany(ct => ct.SchemeOfWorkEntries)
+                    .HasForeignKey(s => s.CurriculumTopicId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(s => s.CreatedByStaff)
+                    .WithMany()
+                    .HasForeignKey(s => s.CreatedByStaffId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(s => s.VettedByStaff)
+                    .WithMany()
+                    .HasForeignKey(s => s.VettedByStaffId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<TimetableSlot>(entity =>
@@ -312,6 +346,26 @@ namespace SFMA_API.Data.Context
                     .WithMany()
                     .HasForeignKey(l => l.ReviewedById)
                     .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(l => l.AcademicTerm)
+                    .WithMany()
+                    .HasForeignKey(l => l.AcademicTermId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(l => l.SubjectRef)
+                    .WithMany()
+                    .HasForeignKey(l => l.SubjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(l => l.SchemeOfWorkEntry)
+                    .WithMany(s => s.LessonNotes)
+                    .HasForeignKey(l => l.SchemeOfWorkEntryId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<AcademicWorkflowAuditLog>(entity =>
+            {
+                entity.HasOne(a => a.ActorStaff)
+                    .WithMany()
+                    .HasForeignKey(a => a.ActorStaffId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<Assignment>(entity =>

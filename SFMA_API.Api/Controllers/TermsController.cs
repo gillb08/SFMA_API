@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
+using SFMA_API.Services.Implementation;
 using SFMA_API.Services.Interfaces;
 using Swashbuckle.AspNetCore.Annotations;
 using System;
@@ -46,6 +47,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateTerm([FromBody] CreateTermRequest request)
         {
+            ClassSectionHelper.ValidateAdministrativeMutationAccess(HttpContext.User, "create-term", "academic terms");
             var result = await _termService.CreateTerm(request);
             return Ok(result);
         }
@@ -55,6 +57,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateTerm(Guid id, [FromBody] UpdateTermRequest request)
         {
+            ClassSectionHelper.ValidateAdministrativeMutationAccess(HttpContext.User, "update-term", "academic terms");
             var result = await _termService.UpdateTerm(id, request);
             return Ok(result);
         }
@@ -64,6 +67,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> ConfigureDeadlines(Guid id, [FromBody] ConfigureDeadlinesRequest request)
         {
+            ClassSectionHelper.ValidateAdministrativeMutationAccess(HttpContext.User, "configure-deadlines", "term deadlines");
             var result = await _termService.ConfigureDeadlines(id, request);
             return Ok(result);
         }

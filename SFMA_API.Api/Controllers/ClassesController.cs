@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SFMA_API.Models.Dtos.Request;
 using SFMA_API.Models.Dtos.Response;
+using SFMA_API.Services.Implementation;
 using SFMA_API.Services.Interfaces;
 using Swashbuckle.AspNetCore.Annotations;
 using System;
@@ -47,6 +48,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateClass([FromBody] CreateClassSectionRequest request)
         {
+            ClassSectionHelper.ValidateAdministrativeMutationAccess(HttpContext.User, "create-class", "class sections");
             var result = await _classSectionService.CreateClass(request);
             return Ok(result);
         }
@@ -56,6 +58,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateClass(Guid id, [FromBody] UpdateClassSectionRequest request)
         {
+            ClassSectionHelper.ValidateAdministrativeMutationAccess(HttpContext.User, "update-class", "class sections");
             var result = await _classSectionService.UpdateClass(id, request);
             return Ok(result);
         }
@@ -65,6 +68,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> DeleteClass(Guid id)
         {
+            ClassSectionHelper.ValidateAdministrativeMutationAccess(HttpContext.User, "delete-class", "class sections");
             var result = await _classSectionService.DeleteClass(id);
             return Ok(result);
         }

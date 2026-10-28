@@ -44,7 +44,7 @@ namespace SFMA_API.Api.Controllers
         [ProducesResponseType(typeof(SuccessResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> UpdateAssignment(Guid id, [FromBody] UpdateAssignmentRequest request)
         {
-            var result = await _service.UpdateAssignment(id, request);
+            var result = await _service.UpdateAssignment(id, request, HttpContext.User);
             return Ok(result);
         }
 

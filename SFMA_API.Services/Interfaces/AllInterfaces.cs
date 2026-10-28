@@ -138,24 +138,36 @@ namespace SFMA_API.Services.Interfaces
         Task<BudgetItemProgress> UpsertDepartmentBudget(UpsertDepartmentBudgetRequest request);
     }
 
+    public interface ICurriculumTopicService
+    {
+        Task<IEnumerable<CurriculumTopicResponse>> GetCurriculumTopics(Guid? subjectId, Guid? classSectionId, Guid? academicTermId, ClaimsPrincipal currentUser);
+        Task<CurriculumTopicResponse> CreateCurriculumTopic(CreateCurriculumTopicRequest request, ClaimsPrincipal currentUser);
+        Task<CurriculumTopicResponse> UpdateCurriculumTopic(Guid id, UpdateCurriculumTopicRequest request, ClaimsPrincipal currentUser);
+        Task<bool> DeleteCurriculumTopic(Guid id, ClaimsPrincipal currentUser);
+    }
+
     public interface ISchemeAndTimetableService
     {
-        Task<IEnumerable<SchemeOfWorkResponse>> GetSchemeOfWork(Guid classSectionId, Guid? termId);
-        Task<SchemeOfWorkResponse> CreateSchemeOfWork(CreateSchemeOfWorkRequest request);
-        Task<SchemeOfWorkResponse> UpdateSchemeOfWork(Guid id, UpdateSchemeOfWorkRequest request);
+        Task<IEnumerable<SchemeOfWorkResponse>> GetSchemeOfWork(Guid classSectionId, Guid? termId, Guid? subjectId, ClaimsPrincipal currentUser);
+        Task<SchemeOfWorkResponse> CreateSchemeOfWork(CreateSchemeOfWorkRequest request, ClaimsPrincipal currentUser);
+        Task<SchemeOfWorkResponse> UpdateSchemeOfWork(Guid id, UpdateSchemeOfWorkRequest request, ClaimsPrincipal currentUser);
+        Task<SchemeOfWorkResponse> ReviewSchemeOfWork(Guid id, ReviewSchemeOfWorkRequest request, ClaimsPrincipal currentUser);
         Task<bool> VetSchemeOfWork(Guid id, ClaimsPrincipal currentUser);
-        Task<IEnumerable<TimetableSlotResponse>> GetTimetable(Guid classId);
-        Task<bool> UpdateTimetable(Guid classId, UpdateTimetableRequest request);
+        Task<IEnumerable<TimetableSlotResponse>> GetTimetable(Guid classId, ClaimsPrincipal currentUser);
+        Task<bool> UpdateTimetable(Guid classId, UpdateTimetableRequest request, ClaimsPrincipal currentUser);
+        Task<IEnumerable<CurriculumCoverageReportResponse>> GetCoverageReport(Guid? classSectionId, Guid? termId, ClaimsPrincipal currentUser);
+        Task<IEnumerable<CurriculumAlertResponse>> GetCurriculumAlerts(Guid? classSectionId, ClaimsPrincipal currentUser);
     }
 
     public interface ILessonNoteAndAssignmentService
     {
-        Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(SFMA_API.Models.Enums.LessonNoteStatus? status, ClaimsPrincipal currentUser);
+        Task<IEnumerable<LessonNoteResponse>> GetLessonNotes(SFMA_API.Models.Enums.LessonNoteStatus? status, Guid? classSectionId, Guid? schemeOfWorkEntryId, ClaimsPrincipal currentUser);
         Task<LessonNoteResponse> CreateLessonNote(CreateLessonNoteRequest request, ClaimsPrincipal currentUser);
         Task<LessonNoteResponse> ReviewLessonNote(Guid id, ReviewLessonNoteRequest request, ClaimsPrincipal currentUser);
+        Task<LessonNoteResponse> MarkLessonDelivery(Guid id, MarkLessonDeliveryRequest request, ClaimsPrincipal currentUser);
         Task<IEnumerable<AssignmentResponse>> GetAssignments(Guid classSectionId, ClaimsPrincipal currentUser);
         Task<AssignmentResponse> CreateAssignment(CreateAssignmentRequest request, ClaimsPrincipal currentUser);
-        Task<AssignmentResponse> UpdateAssignment(Guid id, UpdateAssignmentRequest request);
+        Task<AssignmentResponse> UpdateAssignment(Guid id, UpdateAssignmentRequest request, ClaimsPrincipal currentUser);
         Task<IEnumerable<AssignmentSubmissionResponse>> GetAssignmentSubmissions(Guid assignmentId, ClaimsPrincipal currentUser);
         Task<AssignmentSubmissionResponse> SubmitAssignment(Guid assignmentId, SubmitAssignmentRequest request, ClaimsPrincipal currentUser);
         Task<AssignmentSubmissionResponse> GradeAssignmentSubmission(Guid submissionId, GradeAssignmentSubmissionRequest request, ClaimsPrincipal currentUser);
@@ -169,8 +181,8 @@ namespace SFMA_API.Services.Interfaces
         Task<InquiryMessageResponse> AddInquiryMessage(Guid id, AddInquiryMessageRequest request, ClaimsPrincipal currentUser);
         Task<InquiryResponse> UpdateInquiryStatus(Guid id, UpdateInquiryStatusRequest request, ClaimsPrincipal currentUser);
         Task<IEnumerable<SchoolRequirementResponse>> GetSchoolRequirements(Guid classSectionId, Guid? termId, Guid? studentId, ClaimsPrincipal? currentUser = null);
-        Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request);
-        Task<bool> DeleteSchoolRequirement(Guid id);
+        Task<SchoolRequirementResponse> UpsertSchoolRequirement(UpsertSchoolRequirementRequest request, ClaimsPrincipal currentUser);
+        Task<bool> DeleteSchoolRequirement(Guid id, ClaimsPrincipal currentUser);
         Task<bool> ToggleRequirementStatus(Guid requirementId, ToggleRequirementStatusRequest request, ClaimsPrincipal currentUser);
         Task<string> ExportRequirementsPdf(Guid classSectionId);
     }
